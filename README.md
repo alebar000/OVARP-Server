@@ -522,7 +522,6 @@ pytest tests/ -v
 | `POST` | `/api/session/resume` | Resume a paused session |
 | `POST` | `/api/session/end` | End the session and return data |
 | `POST` | `/api/session/marker` | Add an event marker |
-
 | `GET` | `/api/scenarios` | List available experiment scenarios |
 | `POST` | `/api/scenarios/load` | Load and start a scenario |
 | `POST` | `/api/scenarios/advance` | Advance to next scenario step |
