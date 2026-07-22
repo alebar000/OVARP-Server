@@ -96,8 +96,8 @@ The **Open Virtual Agent Research Platform (OVARP)** is a provider-agnostic serv
 
 ```bash
 # Clone the repository
-git clone https://github.com/alebar000/ovarp-review.git
-cd ovarp-review
+git clone https://github.com/alebar000/OVARP-Server.git
+cd OVARP-Server
 
 # Create and activate virtual environment
 python -m venv venv
