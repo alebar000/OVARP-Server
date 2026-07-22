@@ -6,7 +6,7 @@ STT (speech-to-text) → LLM (language model) → TTS (text-to-speech).
 Maintains conversation history, dispatches actions to connected XR
 clients, and manages provider hot-swapping at runtime.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

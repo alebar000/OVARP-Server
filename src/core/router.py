@@ -6,7 +6,7 @@ the experiment schema, logs them via the telemetry module, and dispatches
 them to the appropriate handler (orchestrator for AI interactions, or
 broadcast for direct commands). Acts as the central message bus.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

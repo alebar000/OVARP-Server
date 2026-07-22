@@ -6,7 +6,7 @@ Manages experiment sessions with participant tracking, lifecycle control
 Designed for research protocols where reproducibility and precise timing
 are critical.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

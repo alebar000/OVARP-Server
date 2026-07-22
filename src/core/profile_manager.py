@@ -10,7 +10,7 @@ When a profile is applied to an agent, the system prompt is auto-composed
 from all persona fields — backstory, guardrails, and personality traits
 are woven into the final LLM prompt automatically.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

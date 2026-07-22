@@ -5,7 +5,7 @@ Unit tests for ``BaseCommand`` Pydantic schema validation. Verifies
 that valid commands are parsed correctly, unregistered devices are
 rejected, and invalid custom action values raise ``ValidationError``.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

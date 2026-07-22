@@ -6,7 +6,7 @@ Defines abstract base classes for the three AI provider roles:
 and ``BaseTTSProvider`` (text-to-speech). All concrete providers must
 implement their respective interfaces.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

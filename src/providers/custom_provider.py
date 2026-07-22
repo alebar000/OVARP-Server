@@ -6,7 +6,7 @@ Lets users register Ollama, LM Studio, vLLM, LocalAI, or any custom
 service that exposes an OpenAI-compatible ``/v1/chat/completions`` or
 ``/v1/audio/speech`` endpoint.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

@@ -6,7 +6,7 @@ structure flowing through ZMQ and WebSocket transports. Commands are
 validated dynamically against the current experiment configuration loaded
 from ``config.yaml``.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

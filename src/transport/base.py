@@ -6,7 +6,7 @@ layers. Transports handle bidirectional message flow between the server
 and connected clients (XR headsets, web browsers, mobile apps).
 Supports callback registration for inbound message dispatching.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

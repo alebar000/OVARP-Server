@@ -7,7 +7,7 @@ initializes transports (ZMQ + WebSocket), registers AI providers
 REST/WebSocket endpoints for the Wizard-of-Oz console, LLM chat,
 telemetry export, and real-time system logs.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

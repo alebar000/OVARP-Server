@@ -7,7 +7,7 @@ Implements LLM and TTS providers using the Google ``genai`` SDK:
 - ``GeminiTTSProvider``: Text-to-speech synthesis using ``gemini-2.5-flash-tts``
   with configurable voice presets via the ``generate_content`` API.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

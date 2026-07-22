@@ -5,7 +5,7 @@ Manages scripted experiment protocols. Scenarios are YAML-defined sequences
 of steps that guide researchers through structured experiment procedures.
 Each step can auto-apply conditions, execute actions, and log event markers.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

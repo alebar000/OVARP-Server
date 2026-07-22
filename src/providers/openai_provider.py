@@ -7,7 +7,7 @@ Implements STT, LLM, and TTS providers using the OpenAI API:
   for agent actions (emotions, gestures, gaze).
 - ``OpenAITTSProvider``: Text-to-speech synthesis using the ``tts-1`` model.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

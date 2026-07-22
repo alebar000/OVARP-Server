@@ -6,7 +6,7 @@ WebSocket support. Manages connection lifecycle, broadcasts outbound
 messages to all connected clients, and dispatches inbound messages
 to registered framework callbacks.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

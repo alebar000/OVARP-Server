@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <em>Part of [Anonymous Research Lab] — repository links withheld for anonymous review</em>
+  <em>Developed at the Universidad de Costa Rica (ECCI/CITIC) with the Spatial Lab, Universidad Cenfotec, and the University of Florida</em>
 </p>
 
 ---
@@ -96,8 +96,8 @@ The **Open Virtual Agent Research Platform (OVARP)** is a provider-agnostic serv
 
 ```bash
 # Clone the repository
-git clone [ANONYMOUS — repository URL withheld for review]
-cd OpenVirtualAgentResearchPlatform-Server
+git clone https://github.com/alebar000/ovarp-review.git
+cd ovarp-review
 
 # Create and activate virtual environment
 python -m venv venv
@@ -537,6 +537,18 @@ pytest tests/ -v
 
 ---
 
+## 👥 Authors
+
+**Author:** Alexander Barquero Elizondo, Ph.D. — Universidad de Costa Rica, ECCI/CITIC
+
+**Collaborators:**
+- Briam Mora Villalobos — Spatial Lab, Universidad Cenfotec
+- Stephanie Isabel Martinez Iglesias — Spatial Lab, Universidad Cenfotec
+- Rodrigo L. Calvo — University of Florida
+
+Companion Unity XR reference clients: [Meta Quest 3 (VR)](https://github.com/SpatialLab-UCENFOTEC/OVARP-UnityMetaQuestClient) · [XREAL glasses (AR)](https://github.com/SpatialLab-UCENFOTEC/OVARP-UnityXRealClient)
+
+
 ## 📜 License
 
-[MIT License](LICENSE) © 2026 [Anonymous]
+[MIT License](LICENSE) © 2026 Alexander Barquero Elizondo

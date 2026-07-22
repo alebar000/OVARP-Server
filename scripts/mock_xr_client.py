@@ -6,7 +6,7 @@ to the OVARP server via ZeroMQ. Sends periodic telemetry messages and
 listens for server commands. Useful for testing the ZMQ transport
 pipeline without a real XR headset.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

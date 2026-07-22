@@ -10,7 +10,7 @@ Now supports session-aware logging: when an experiment session is active,
 every log entry includes participant_id and session_id. Event markers
 are logged as distinct entries for post-hoc analysis.
 
-Author: [Anonymous for review]
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 

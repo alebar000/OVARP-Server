@@ -8,7 +8,7 @@
  *
  * All dependencies are loaded via CDN import maps (see index.html).
  *
- * @author [Anonymous for review]
+ * @author Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
  * @license MIT
  */
 import * as THREE from 'three';
