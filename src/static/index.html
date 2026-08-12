@@ -837,9 +837,10 @@
  </div>
  <button id="save-llm-btn" class="btn btn-action-primary w-100" onclick="saveLLMConfig()">Save &amp; Apply</button>
  <div class="d-flex gap-2 mt-2">
- <button id="tts-toggle-btn" class="btn btn-outline-warning flex-fill" onclick="toggleTTS()"> TTS ON</button>
- <button id="clear-history-btn" class="btn btn-outline-danger flex-fill" onclick="clearAgentHistory()"> Reset Agent</button>
- </div>
+  <button id="tts-toggle-btn" class="btn btn-outline-warning flex-fill" onclick="toggleTTS()"> TTS ON</button>
+  <button id="stop-audio-btn" class="btn btn-danger flex-fill" onclick="stopAudioPlayback()"> Stop Audio</button>
+  <button id="clear-history-btn" class="btn btn-outline-secondary flex-fill" onclick="clearAgentHistory()"> Reset Agent</button>
+  </div>
  <!-- TTS Provider Picker -->
  <div class="mt-3">
  <label class="form-label text-info">TTS Provider</label>
@@ -914,14 +915,17 @@
  <input type="text" id="chat-input" class="form-control" placeholder="Type or hold Mic to talk..." aria-label="Chat message input">
  <button class="btn btn-primary" id="chat-send-btn" title="Send message to LLM (Enter)">Send (Trigger LLM)</button>
  </div>
- <div class="d-flex align-items-center gap-2 mt-2">
- <small class="text-muted">STT:</small>
- <select id="stt-provider-select" class="form-select form-select-sm" style="width: auto; flex: 0 0 auto;">
- <option value="webspeech" selected> WebSpeech (Browser)</option>
- <option value="openai"> OpenAI (Whisper)</option>
- </select>
- <small id="stt-status" class="text-muted"></small>
- </div>
+ <div class="d-flex align-items-center justify-content-between gap-2 mt-2">
+  <div class="d-flex align-items-center gap-2">
+  <small class="text-muted">STT:</small>
+  <select id="stt-provider-select" class="form-select form-select-sm" style="width: auto; flex: 0 0 auto;">
+  <option value="webspeech" selected> WebSpeech (Browser)</option>
+  <option value="openai"> OpenAI (Whisper)</option>
+  </select>
+  <small id="stt-status" class="text-muted"></small>
+  </div>
+  <button class="btn btn-sm btn-outline-danger" onclick="stopAudioPlayback()">Stop Audio</button>
+  </div>
  </div>
  </div>
  </div>
@@ -1511,6 +1515,10 @@
  targetBadge.textContent = 'Connected';
  targetBadge.className = 'badge badge-emerald';
  }
+ const llmStatus = document.getElementById('llm-conn-status');
+ if (llmStatus) {
+ llmStatus.innerHTML = '<span class="conn-dot connected"></span><small class="text-success fw-semibold">Online (WS)</small>';
+ }
  log('Connected to OVARP WebSocket router', 'sent');
  if (window.appendSysLog) window.appendSysLog('INFO', 'telemetry', 'WebSocket router connected (device: woz_web_console)');
  },
@@ -1524,6 +1532,10 @@
  if (targetBadge) {
  targetBadge.textContent = 'Disconnected';
  targetBadge.className = 'badge badge-rose';
+ }
+ const llmStatus = document.getElementById('llm-conn-status');
+ if (llmStatus) {
+ llmStatus.innerHTML = '<span class="conn-dot disconnected"></span><small class="text-muted">Offline</small>';
  }
  log('Disconnected from OVARP router. Reconnecting...', 'error');
  if (window.appendSysLog) window.appendSysLog('WARN', 'telemetry', 'WebSocket connection lost');
@@ -2240,6 +2252,13 @@
  }
  }
  window.toggleTTS = toggleTTS;
+
+  window.stopAudioPlayback = function() {
+    if (window.ovarpClient) {
+      window.ovarpClient.stopAudio();
+      showToast('Audio playback stopped & queue cleared', 'info');
+    }
+  };
 
  async function clearAgentHistory() {
  if (!confirm('Reset agent conversation history?')) return;

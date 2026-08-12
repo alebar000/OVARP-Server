@@ -42,10 +42,16 @@ export default class OVARPClient {
         this._audioChunks = [];
         this.isRecording = false;
 
-        // TTS buffer
+        // TTS buffer & Queue
         this._ttsAudioChunks = [];
+        this._audioQueue = [];
+        this.isPlayingAudio = false;
         this._ttsAudioPlayer = document.createElement('audio');
         this._ttsAudioPlayer.id = 'OVARP-tts-audio-player';
+        this._ttsAudioPlayer.onended = () => {
+            this.isPlayingAudio = false;
+            this._processAudioQueue();
+        };
         document.body.appendChild(this._ttsAudioPlayer);
 
         if (config.canvas) {
@@ -253,6 +259,36 @@ export default class OVARPClient {
         }
     }
 
+    /**
+     * Immediately stop all playing TTS audio and clear the queue.
+     */
+    stopAudio() {
+        if (this._ttsAudioPlayer) {
+            this._ttsAudioPlayer.pause();
+            this._ttsAudioPlayer.currentTime = 0;
+        }
+        this._ttsAudioChunks = [];
+        this._audioQueue = [];
+        this.isPlayingAudio = false;
+        this.callbacks.onLog('Audio playback stopped and queue cleared', 'info');
+    }
+
+    _processAudioQueue() {
+        if (this.isPlayingAudio || this._audioQueue.length === 0) return;
+        const item = this._audioQueue.shift();
+        this.isPlayingAudio = true;
+        this._ttsAudioPlayer.src = item.url;
+        this._ttsAudioPlayer.play().catch(e => {
+            this.callbacks.onLog(`TTS Autoplay blocked: ${e}`, 'warn');
+            this.isPlayingAudio = false;
+            this._processAudioQueue();
+        });
+
+        if (this.avatar) {
+            this.avatar.connectAudio(this._ttsAudioPlayer);
+        }
+    }
+
     _handleAudioCommand(data) {
         if (data.command === "tts_chunk" && data.subcommand && data.subcommand.audio_base64) {
             const binaryStr = atob(data.subcommand.audio_base64);
@@ -267,20 +303,12 @@ export default class OVARPClient {
                 const url = URL.createObjectURL(blob);
                 this._ttsAudioChunks = []; // reset
 
-                // Stop any currently playing audio before setting new source
-                this._ttsAudioPlayer.pause();
-                this._ttsAudioPlayer.currentTime = 0;
-                // Note: we do NOT revokeObjectURL here because replay buttons retain references to past blob URLs
-                this._ttsAudioPlayer.src = url;
-                this._ttsAudioPlayer.play().catch(e => this.callbacks.onLog(`TTS Autoplay blocked: ${e}`, 'warn'));
-
-                // Notify the UI so it can attach a replay button
+                // Notify UI (e.g. to attach replay buttons to chat bubbles)
                 this.callbacks.onTTSReady(url);
 
-                // Synergize LipSync magically
-                if (this.avatar) {
-                    this.avatar.connectAudio(this._ttsAudioPlayer);
-                }
+                // Queue audio for sequential non-overlapping playback
+                this._audioQueue.push({ url });
+                this._processAudioQueue();
             }
         }
     }
