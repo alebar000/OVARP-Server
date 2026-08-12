@@ -2758,7 +2758,15 @@
 
  const headerBadge = document.getElementById('nav-key-storage-badge');
  const summaryBadge = document.getElementById('keystore-summary-badge');
- const mainBadge = keys.OPENAI_API_KEY?.badge || keys.GEMINI_API_KEY?.badge || '[NOT CONFIGURED]';
+
+ const keyList = [keys.OPENAI_API_KEY, keys.GEMINI_API_KEY, keys.ELEVENLABS_API_KEY].filter(Boolean);
+ let mainBadge = '[NOT CONFIGURED]';
+ if (keyList.some(k => k.badge && k.badge.includes('[SAVED IN .ENV]'))) {
+   mainBadge = '[SAVED IN .ENV]';
+ } else if (keyList.some(k => k.badge && k.badge.includes('[IN MEMORY ONLY'))) {
+   mainBadge = '[IN MEMORY ONLY]';
+ }
+
  if (headerBadge) {
  headerBadge.textContent = mainBadge;
  setKeyBadgeStyle(headerBadge, mainBadge);
