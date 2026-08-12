@@ -182,7 +182,7 @@ class DialogOrchestrator:
                 self.tts_providers[profile.voice.provider].voice = profile.voice.voice_id
 
         std_log.info(
-            f"📋 Orchestrator: Profile '{profile.id}' applied to {agent_id} "
+            f" Orchestrator: Profile '{profile.id}' applied to {agent_id} "
             f"| voice={profile.voice.voice_id if profile.voice else 'default'}"
         )
         return state
@@ -331,7 +331,7 @@ class DialogOrchestrator:
             latency["tts_ms"] = tts_ms
             latency["total_ms"] = total_ms
             self._last_latency = latency
-            std_log.info(f"⏱ Orchestrator: Latency | stt={stt_ms}ms llm={llm_ms}ms tts={tts_ms}ms total={total_ms}ms")
+            std_log.info(f" Orchestrator: Latency | stt={stt_ms}ms llm={llm_ms}ms tts={tts_ms}ms total={total_ms}ms")
 
         except Exception as e:
             std_log.error(f"Orchestrator: CRITICAL ERROR in process_text_interaction | {type(e).__name__}: {str(e)}")

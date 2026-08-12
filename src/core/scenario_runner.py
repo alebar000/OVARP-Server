@@ -80,7 +80,7 @@ class ScenarioRunner:
                     data = yaml.safe_load(f)
                 scenario = Scenario(**data)
                 self._scenarios[scenario.id] = scenario
-                std_log.info(f"📋 Loaded scenario: {scenario.name} ({len(scenario.steps)} steps)")
+                std_log.info(f" Loaded scenario: {scenario.name} ({len(scenario.steps)} steps)")
             except Exception as e:
                 std_log.error(f"Failed to load scenario {yaml_file}: {e}")
 
@@ -95,7 +95,7 @@ class ScenarioRunner:
             yaml_path = scenario_dir / f"{scenario.id}.yaml"
             with open(yaml_path, "w", encoding="utf-8") as f:
                 yaml.dump(scenario.model_dump(exclude_none=True), f, sort_keys=False, allow_unicode=True)
-            std_log.info(f"💾 Saved scenario {scenario.id} to {yaml_path}")
+            std_log.info(f" Saved scenario {scenario.id} to {yaml_path}")
         return scenario
 
     def list_scenarios(self) -> list[dict]:
@@ -118,7 +118,7 @@ class ScenarioRunner:
         self._active_scenario = self._scenarios[scenario_id]
         self._current_step_index = 0
         step = self.current_step
-        std_log.info(f"🎬 Scenario STARTED: {self._active_scenario.name} | step 1/{len(self._active_scenario.steps)}")
+        std_log.info(f" Scenario STARTED: {self._active_scenario.name} | step 1/{len(self._active_scenario.steps)}")
         return step
 
     def advance(self) -> Optional[ScenarioStep]:
@@ -129,7 +129,7 @@ class ScenarioRunner:
         self._current_step_index += 1
 
         if self._current_step_index >= len(self._active_scenario.steps):
-            std_log.info(f"✅ Scenario COMPLETED: {self._active_scenario.name}")
+            std_log.info(f" Scenario COMPLETED: {self._active_scenario.name}")
             completed = self._active_scenario
             self._active_scenario = None
             self._current_step_index = -1

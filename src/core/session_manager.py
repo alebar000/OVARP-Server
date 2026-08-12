@@ -78,7 +78,7 @@ class SessionManager:
             started_at_unix=time.time(),
         )
         self._session = session
-        std_log.info(f"🧪 Session STARTED | participant={participant_id} | session_id={session.session_id}")
+        std_log.info(f" Session STARTED | participant={participant_id} | session_id={session.session_id}")
         return session
 
     def pause_session(self) -> ExperimentSession:
@@ -88,7 +88,7 @@ class SessionManager:
 
         self._session.status = "paused"
         self._session.paused_at = time.time()
-        std_log.info(f"⏸️ Session PAUSED | session_id={self._session.session_id}")
+        std_log.info(f"⏸ Session PAUSED | session_id={self._session.session_id}")
         return self._session
 
     def resume_session(self) -> ExperimentSession:
@@ -102,7 +102,7 @@ class SessionManager:
             self._session.paused_at = None
 
         self._session.status = "active"
-        std_log.info(f"▶️ Session RESUMED | session_id={self._session.session_id}")
+        std_log.info(f"▶ Session RESUMED | session_id={self._session.session_id}")
         return self._session
 
     def end_session(self) -> ExperimentSession:
@@ -118,7 +118,7 @@ class SessionManager:
         self._session.status = "completed"
         self._session.ended_at = datetime.now().isoformat()
         std_log.info(
-            f"⏹️ Session ENDED | session_id={self._session.session_id} "
+            f"⏹ Session ENDED | session_id={self._session.session_id} "
             f"| participant={self._session.participant_id} "
             f"| markers={len(self._session.markers)}"
         )
@@ -142,7 +142,7 @@ class SessionManager:
             metadata=metadata,
         )
         self._session.markers.append(marker)
-        std_log.info(f"📌 MARKER | label=\"{label}\" | category=\"{category}\" | session={self._session.session_id}")
+        std_log.info(f" MARKER | label=\"{label}\" | category=\"{category}\" | session={self._session.session_id}")
         return marker
 
     def update_marker(
@@ -182,7 +182,7 @@ class SessionManager:
         if metadata is not None:
             target_marker.metadata = metadata
 
-        std_log.info(f"✏️ MARKER UPDATED | id={target_marker.id} | category=\"{target_marker.category}\"")
+        std_log.info(f" MARKER UPDATED | id={target_marker.id} | category=\"{target_marker.category}\"")
         return target_marker
 
     def get_elapsed_seconds(self) -> float:

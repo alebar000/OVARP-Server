@@ -649,7 +649,7 @@ async def get_keys_status():
 async def update_api_keys(req: KeyUpdateRequest):
     """Updates API keys in memory, optionally persists to .env, and resets singletons."""
     updates = {}
-    if req.provider and req.api_key:
+    if req.provider and req.api_key is not None:
         env_key = ENV_KEY_MAP.get(req.provider, req.provider)
         updates[env_key] = req.api_key
     if req.keys:
@@ -688,7 +688,7 @@ async def update_api_keys(req: KeyUpdateRequest):
 async def persist_api_keys(req: KeyPersistRequest):
     """Persists current in-memory API keys (or provided keys) to .env line-by-line."""
     updates = {}
-    if req.provider and req.api_key:
+    if req.provider and req.api_key is not None:
         env_key = ENV_KEY_MAP.get(req.provider, req.provider)
         updates[env_key] = req.api_key
         os.environ[env_key] = req.api_key

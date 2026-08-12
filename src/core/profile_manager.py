@@ -172,11 +172,11 @@ class ProfileManager:
                 profile = AgentProfile(**data)
                 self._profiles[profile.id] = profile
                 count += 1
-                std_log.info(f"📋 Loaded profile: {profile.id} ({profile.name})")
+                std_log.info(f" Loaded profile: {profile.id} ({profile.name})")
             except Exception as e:
                 std_log.error(f"Failed to load profile {yaml_file.name}: {e}")
 
-        std_log.info(f"📋 Profiles loaded: {count} total")
+        std_log.info(f" Profiles loaded: {count} total")
 
     def list_profiles(self) -> list[dict]:
         """Returns a summary of all available profiles."""
@@ -200,7 +200,7 @@ class ProfileManager:
         """Create a new profile at runtime from a dictionary."""
         profile = AgentProfile(**data)
         self._profiles[profile.id] = profile
-        std_log.info(f"📋 Profile created at runtime: {profile.id} ({profile.name})")
+        std_log.info(f" Profile created at runtime: {profile.id} ({profile.name})")
         return profile
 
     def delete_profile(self, profile_id: str) -> bool:
@@ -285,7 +285,7 @@ class ProfileManager:
 
         if migrated:
             std_log.info(
-                f"📋 Auto-migrated {migrated} legacy condition(s) to profiles "
+                f" Auto-migrated {migrated} legacy condition(s) to profiles "
                 f"(the 'conditions:' config section is deprecated - use profiles/ instead)"
             )
 
