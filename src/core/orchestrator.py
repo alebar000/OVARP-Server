@@ -79,12 +79,12 @@ class DialogOrchestrator:
         if agent_id:
             state = self._get_agent_state(agent_id)
             state["history"].clear()
-            std_log.info(f"🗑️ Orchestrator: History cleared for {agent_id}")
+            std_log.info(f"Orchestrator: History cleared for {agent_id}")
         else:
             self.conversation_history.clear()
             for state in self._agent_state.values():
                 state["history"].clear()
-            std_log.info("🗑️ Orchestrator: All conversation history cleared")
+            std_log.info("Orchestrator: All conversation history cleared")
 
     @property
     def llm(self) -> BaseLLMProvider:
@@ -115,19 +115,19 @@ class DialogOrchestrator:
         """Switch TTS provider independently of LLM."""
         if provider_id in self.tts_providers:
             self.active_tts_id = provider_id
-            std_log.info(f"🔊 Orchestrator: TTS Provider Swapped to '{provider_id}'")
+            std_log.info(f"Orchestrator: TTS Provider Swapped to '{provider_id}'")
             return True
-        std_log.warning(f"⚠️ Orchestrator: Unknown TTS provider '{provider_id}'")
+        std_log.warning(f"Orchestrator: Unknown TTS provider '{provider_id}'")
         return False
 
     def register_provider(self, name: str, provider, provider_type: str):
         """Register a custom provider at runtime. type is 'llm' or 'tts'."""
         if provider_type == "llm":
             self.llm_providers[name] = provider
-            std_log.info(f"🔌 Orchestrator: Registered custom LLM provider '{name}'")
+            std_log.info(f"Orchestrator: Registered custom LLM provider '{name}'")
         elif provider_type == "tts":
             self.tts_providers[name] = provider
-            std_log.info(f"🔌 Orchestrator: Registered custom TTS provider '{name}'")
+            std_log.info(f"Orchestrator: Registered custom TTS provider '{name}'")
 
     def unregister_provider(self, name: str):
         """Remove a custom provider. Won't remove built-in openai/gemini."""
@@ -143,9 +143,9 @@ class DialogOrchestrator:
         # If we just removed the active provider, fall back to openai
         if self.active_llm_id == name:
             self.active_llm_id = "openai"
-            std_log.info(f"⚠️ Orchestrator: Active provider '{name}' removed, fell back to openai")
+            std_log.info(f"Orchestrator: Active provider '{name}' removed, fell back to openai")
         if removed:
-            std_log.info(f"🗑️ Orchestrator: Unregistered provider '{name}'")
+            std_log.info(f"Orchestrator: Unregistered provider '{name}'")
         return removed
         
     def set_system_prompt(self, prompt: str, agent_id: str = None):
@@ -203,7 +203,7 @@ class DialogOrchestrator:
         """Change the active TTS provider's voice at runtime."""
         tts_provider = self.tts
         tts_provider.voice = voice_id
-        std_log.info(f"🔊 Orchestrator: TTS voice changed to '{voice_id}' on {self.active_llm_id}")
+        std_log.info(f"Orchestrator: TTS voice changed to '{voice_id}' on {self.active_tts_id}")
 
     def get_tts_config(self) -> dict:
         """Returns the current TTS state and available voices from config."""
@@ -263,7 +263,7 @@ class DialogOrchestrator:
             # Append user message to the appropriate history
             history.append({"role": "user", "content": text})
             
-            std_log.info(f"🧠 Orchestrator: Starting LLM call | provider={self.active_llm_id} | agent={target_agent} | prompt=\"{text[:80]}\" | history_turns={len(history)}")
+            std_log.info(f"Orchestrator: Starting LLM call | provider={self.active_llm_id} | agent={target_agent} | prompt=\"{text[:80]}\"| history_turns={len(history)}")
             logger.info("Orchestrator: Asking LLM...", prompt=text)
             
             llm_start = time.perf_counter()
@@ -282,7 +282,7 @@ class DialogOrchestrator:
             if len(history) > self.MAX_HISTORY_TURNS:
                 del history[:-self.MAX_HISTORY_TURNS]
             
-            std_log.info(f"✅ Orchestrator: LLM responded | reply=\"{str(spoken_reply)[:120]}\" | actions={actions}")
+            std_log.info(f"Orchestrator: LLM responded | reply=\"{str(spoken_reply)[:120]}\"| actions={actions}")
             logger.info("Orchestrator: LLM Reply", text=spoken_reply, actions=actions)
             
             # Build latency dict for this interaction
@@ -293,7 +293,7 @@ class DialogOrchestrator:
 
             # 0. Broadcast the raw text so the Web UI Chat window can display what the Bot is thinking
             if spoken_reply:
-                std_log.info(f"📡 Orchestrator: Broadcasting llm_reply to all transports")
+                std_log.info(f"Orchestrator: Broadcasting llm_reply to all transports")
                 text_cmd = BaseCommand(
                     sender="server_orchestrator",
                     target_device="all", # Send to UI
@@ -309,9 +309,9 @@ class DialogOrchestrator:
                     }
                 )
                 await router.route_command(text_cmd)
-                std_log.info(f"✅ Orchestrator: llm_reply broadcast complete")
+                std_log.info(f"Orchestrator: llm_reply broadcast complete")
             else:
-                std_log.warning(f"⚠️ Orchestrator: LLM returned empty spoken_reply")
+                std_log.warning(f"Orchestrator: LLM returned empty spoken_reply")
             
             # 1. Dispatch the chosen actions (Emotions/Transformations) FIRST
             if actions:
@@ -324,23 +324,23 @@ class DialogOrchestrator:
                 await self._dispatch_tts(spoken_reply, target_device, target_agent)
                 tts_ms = round((time.perf_counter() - tts_start) * 1000)
             elif spoken_reply and not self.tts_enabled:
-                std_log.info("🔇 Orchestrator: TTS disabled, skipping audio generation")
+                std_log.info("Orchestrator: TTS disabled, skipping audio generation")
 
             # Finalize latency metrics
             total_ms = round((time.perf_counter() - interaction_start) * 1000)
             latency["tts_ms"] = tts_ms
             latency["total_ms"] = total_ms
             self._last_latency = latency
-            std_log.info(f"⏱️ Orchestrator: Latency | stt={stt_ms}ms llm={llm_ms}ms tts={tts_ms}ms total={total_ms}ms")
+            std_log.info(f"⏱ Orchestrator: Latency | stt={stt_ms}ms llm={llm_ms}ms tts={tts_ms}ms total={total_ms}ms")
 
         except Exception as e:
-            std_log.error(f"💥 Orchestrator: CRITICAL ERROR in process_text_interaction | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Orchestrator: CRITICAL ERROR in process_text_interaction | {type(e).__name__}: {str(e)}")
             logger.error("Orchestrator pipeline crashed", error=str(e))
 
     async def _dispatch_actions(self, actions_dict: dict, target_device: str, target_agent: str):
         """Packages LLM JSON actions into a valid BaseCommand and pushes it to Router."""
         try:
-            std_log.info(f"⚡ Orchestrator: Dispatching actions | {actions_dict}")
+            std_log.info(f"Orchestrator: Dispatching actions | {actions_dict}")
             cmd = BaseCommand(
                 sender="server_orchestrator",
                 target_device=target_device,
@@ -353,13 +353,13 @@ class DialogOrchestrator:
             await router.route_command(cmd)
             
         except Exception as e:
-            std_log.error(f"❌ Orchestrator: Failed to dispatch actions | {str(e)}")
+            std_log.error(f"Orchestrator: Failed to dispatch actions | {str(e)}")
             logger.error("Failed to parse and route LLM actions", error=str(e), actions=actions_dict)
 
     async def _dispatch_tts(self, text: str, target_device: str, target_agent: str):
         """Starts TTS generation and streams audio chunks through the router as they arrive."""
         try:
-            std_log.info(f"🔊 Orchestrator: Starting TTS synthesis | target={target_device} text=\"{text[:60]}\"")
+            std_log.info(f"Orchestrator: Starting TTS synthesis | target={target_device} text=\"{text[:60]}\"")
             audio_generator = self.tts.synthesize_stream(text)
             
             chunk_count = 0
@@ -378,7 +378,7 @@ class DialogOrchestrator:
                 )
                 await router.route_command(cmd)
             
-            std_log.info(f"📤 Orchestrator: TTS chunks sent | count={chunk_count}")
+            std_log.info(f"Orchestrator: TTS chunks sent | count={chunk_count}")
                 
             # Send a final 'tts_complete' flag 
             end_cmd = BaseCommand(
@@ -389,17 +389,17 @@ class DialogOrchestrator:
                 command="tts_complete"
             )
             await router.route_command(end_cmd)
-            std_log.info(f"✅ Orchestrator: TTS complete signal sent")
+            std_log.info(f"Orchestrator: TTS complete signal sent")
             
         except Exception as e:
-            std_log.error(f"❌ Orchestrator: TTS Streaming failed | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Orchestrator: TTS Streaming failed | {type(e).__name__}: {str(e)}")
             logger.error("TTS Streaming failed", error=str(e))
 
     async def process_direct_tts(self, text: str, target_device: str, target_agent: str):
         """Bypasses the LLM - sends researcher-typed text directly to TTS and broadcasts it.
         The VR user experiences this identically to an LLM-generated response."""
         try:
-            std_log.info(f"🎤 Orchestrator: Direct TTS | text=\"{text[:80]}\" | target={target_device}")
+            std_log.info(f"Orchestrator: Direct TTS | text=\"{text[:80]}\"| target={target_device}")
 
             # Broadcast the text as a normal llm_reply so all clients display it like agent speech
             text_cmd = BaseCommand(
@@ -421,8 +421,8 @@ class DialogOrchestrator:
             if self.tts_enabled:
                 await self._dispatch_tts(text, target_device, target_agent)
             else:
-                std_log.info("🔇 Orchestrator: TTS disabled, skipping audio for direct message")
+                std_log.info("Orchestrator: TTS disabled, skipping audio for direct message")
 
         except Exception as e:
-            std_log.error(f"❌ Orchestrator: Direct TTS failed | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Orchestrator: Direct TTS failed | {type(e).__name__}: {str(e)}")
             logger.error("Direct TTS pipeline failed", error=str(e))

@@ -910,7 +910,7 @@
  </div>
  <div class="p-3 border-top border-secondary" style="background: var(--card-header-bg);">
  <div class="input-group">
- <button class="btn btn-danger" id="mic-btn" style="width:50px; font-size:1.2em;" title="Hold to Talk"></button>
+ <button class="btn btn-danger d-flex align-items-center justify-content-center" id="mic-btn" style="width:50px; font-size:1.2em;" title="Hold to Talk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
  <input type="text" id="chat-input" class="form-control" placeholder="Type or hold Mic to talk..." aria-label="Chat message input">
  <button class="btn btn-primary" id="chat-send-btn" title="Send message to LLM (Enter)">Send (Trigger LLM)</button>
  </div>
@@ -1535,6 +1535,11 @@
  onMessage: (sub) => {
  log(`LLM Reply: ${typeof sub === 'object' ? JSON.stringify(sub) : sub}`, 'recv');
  if (window.appendSysLog) window.appendSysLog('INFO', 'llm', `LLM Reply received`, sub);
+ if (sub) {
+ const text = typeof sub === 'string' ? sub : (sub.text || sub.response || JSON.stringify(sub));
+ const agentName = (typeof sub === 'object' && sub.agent) ? sub.agent : 'Agent';
+ if (window.appendChatMessage) window.appendChatMessage(agentName, text, false);
+ }
  },
  onAgentAction: (sub) => {
  log(`Agent Action: ${typeof sub === 'object' ? JSON.stringify(sub) : sub}`, 'recv');
@@ -1972,7 +1977,7 @@
  const modal = bootstrap.Modal.getInstance(modalEl);
  if (modal) modal.hide();
  }
- await loadScenariosList();
+ await loadScenarios();
  } else {
  showToast(`Error: ${data.error}`, 'error');
  }
@@ -2246,6 +2251,53 @@
  }
  }
  window.clearAgentHistory = clearAgentHistory;
+
+  // --- Simulated Chat & Mic Controls ---
+  let _speechRecognition = null;
+
+  function appendChatMessage(sender, text, isUser = false) {
+    const chatWin = document.getElementById('chat-window');
+    if (!chatWin) return;
+
+    const placeholder = chatWin.querySelector('.text-center');
+    if (placeholder) placeholder.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${isUser ? 'msg-user' : 'msg-agent'}`;
+
+    const senderHeader = document.createElement('div');
+    senderHeader.style.fontSize = '0.75rem';
+    senderHeader.style.opacity = '0.85';
+    senderHeader.style.marginBottom = '2px';
+    senderHeader.style.fontWeight = 'bold';
+    senderHeader.textContent = sender;
+
+    const contentText = document.createElement('div');
+    contentText.textContent = text;
+
+    bubble.appendChild(senderHeader);
+    bubble.appendChild(contentText);
+
+    chatWin.appendChild(bubble);
+    chatWin.scrollTop = chatWin.scrollHeight;
+  }
+  window.appendChatMessage = appendChatMessage;
+
+  window.sendChatPrompt = function() {
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    appendChatMessage('User', text, true);
+    input.value = '';
+
+    if (window.ovarpClient && window.ovarpClient.ws && window.ovarpClient.ws.readyState === WebSocket.OPEN) {
+      window.ovarpClient.sendText(text);
+    } else {
+      showToast('Client WebSocket not connected to server', 'warning');
+    }
+  };
 
  // --- Inline Profiles in LLM Playground ---
  async function loadInlineProfiles() {
@@ -2808,17 +2860,117 @@
  }
  window.exportTelemetryCSV = exportTelemetryCSV;
 
+ // --- Mic & Chat Listeners ---
+  function initChatAndMic() {
+    const sendBtn = document.getElementById('chat-send-btn');
+    if (sendBtn) {
+      sendBtn.onclick = window.sendChatPrompt;
+    }
+
+    const input = document.getElementById('chat-input');
+    if (input) {
+      input.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.sendChatPrompt();
+        }
+      };
+    }
+
+    const micBtn = document.getElementById('mic-btn');
+    const sttSelect = document.getElementById('stt-provider-select');
+    const sttStatus = document.getElementById('stt-status');
+
+    if (micBtn) {
+      let isHolding = false;
+
+      const startRecording = () => {
+        if (isHolding) return;
+        isHolding = true;
+        micBtn.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.8)';
+        if (sttStatus) sttStatus.textContent = 'Listening...';
+
+        const sttMode = sttSelect ? sttSelect.value : 'webspeech';
+
+        if (sttMode === 'webspeech') {
+          const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SpeechRec) {
+            if (sttStatus) sttStatus.textContent = 'WebSpeech not supported in browser, using Whisper SDK';
+            if (window.ovarpClient) window.ovarpClient.startMic();
+            return;
+          }
+          try {
+            _speechRecognition = new SpeechRec();
+            _speechRecognition.lang = 'en-US';
+            _speechRecognition.interimResults = false;
+            _speechRecognition.maxAlternatives = 1;
+
+            _speechRecognition.onresult = (event) => {
+              const transcript = event.results[0][0].transcript;
+              const inputEl = document.getElementById('chat-input');
+              if (inputEl) inputEl.value = transcript;
+              if (sttStatus) sttStatus.textContent = 'Transcribed: ' + transcript;
+              window.sendChatPrompt();
+            };
+
+            _speechRecognition.onerror = (event) => {
+              console.warn('Speech recognition error:', event.error);
+              if (sttStatus) sttStatus.textContent = 'Speech error: ' + event.error;
+              stopRecording();
+            };
+
+            _speechRecognition.onend = () => {
+              stopRecording();
+            };
+
+            _speechRecognition.start();
+          } catch (e) {
+            console.error('WebSpeech start failed:', e);
+            stopRecording();
+          }
+        } else {
+          if (window.ovarpClient) {
+            window.ovarpClient.startMic();
+          }
+        }
+      };
+
+      const stopRecording = () => {
+        if (!isHolding) return;
+        isHolding = false;
+        micBtn.style.boxShadow = 'none';
+        if (sttStatus) sttStatus.textContent = '';
+
+        const sttMode = sttSelect ? sttSelect.value : 'webspeech';
+        if (sttMode === 'webspeech') {
+          if (_speechRecognition) {
+            try { _speechRecognition.stop(); } catch (e) {}
+            _speechRecognition = null;
+          }
+        } else {
+          if (window.ovarpClient) {
+            window.ovarpClient.stopMic();
+          }
+        }
+      };
+
+      micBtn.onmousedown = startRecording;
+      micBtn.onmouseup = stopRecording;
+      micBtn.onmouseleave = stopRecording;
+      micBtn.ontouchstart = (e) => { e.preventDefault(); startRecording(); };
+      micBtn.ontouchend = (e) => { e.preventDefault(); stopRecording(); };
+    }
+  }
+
  // --- Window Load & Startup ---
  window.onload = function () {
  initTheme();
  initConfig();
- loadLLMConfig();
- ovarpClient.connect();
  connectSysLogsWS();
  loadMarkerPresets();
- renderEvaluationForm();
  loadInlineProfiles();
  loadKeyStoreStatus();
+ initChatAndMic();
 
  if (localStorage.getItem('OVARP_hide_help') === '1') {
  const hb = document.getElementById('help-banner');
@@ -2826,7 +2978,6 @@
  }
 
  setTimeout(async () => {
- loadLLMConfig();
  updateHeaderIndicators();
  refreshOverviewTelemetry();
  loadKeyStoreStatus();
@@ -2889,7 +3040,7 @@
  }
 
  // Listen for Bootstrap tab shown event on WoZ Control & LLM Playground tabs
- ['woz-tab', 'llm-tab'].forEach(tabId => {
+ ['xr-tab', 'llm-tab'].forEach(tabId => {
  const tabEl = document.getElementById(tabId);
  if (tabEl) {
  tabEl.addEventListener('shown.bs.tab', loadAvatarOnTabShow);
@@ -3272,18 +3423,6 @@
  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
  }
  window.escapeHtml = escapeHtml;
-
- setTimeout(async () => {
- try {
- const resp = await fetch('/api/config');
- const config = await resp.json();
- const select = document.getElementById('profile-agent-select');
- if (select) {
- config.agents.forEach(a => { select.add(new Option(`${a.name} (${a.id})`, a.id)); });
- }
- } catch (e) { }
- loadProfiles();
- }, 1000);
  </script>
 </body>
 

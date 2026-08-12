@@ -38,15 +38,15 @@ class GeminiClientSingleton:
         if cls._client is None:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
-                std_log.warning("⚠️ Gemini: GEMINI_API_KEY not found in environment. Provider will be disabled.")
+                std_log.warning("Gemini: GEMINI_API_KEY not found in environment. Provider will be disabled.")
                 logger.warning("GEMINI_API_KEY environment variable not set.")
                 return None
             
             try:
                 cls._client = genai.Client(api_key=api_key)
-                std_log.info(f"✅ Gemini: Client initialized successfully (key ends in ...{api_key[-4:]})")
+                std_log.info(f"Gemini: Client initialized successfully (key ends in ...{api_key[-4:]})")
             except ValueError as e:
-                std_log.error(f"❌ Gemini: Failed to create client | {str(e)}")
+                std_log.error(f"Gemini: Failed to create client | {str(e)}")
                 logger.error("Failed to create Gemini client", error=str(e))
                 return None
 
@@ -108,6 +108,11 @@ class GeminiLLMProvider(BaseLLMProvider):
         return [tool_schema]
 
     async def generate_response(self, prompt: str, system_prompt: Optional[str] = None) -> AsyncGenerator[str, None]:
+        if not self.client:
+            std_log.warning("Gemini LLM: No API key configured, cannot generate response")
+            yield "[Gemini API key not configured]"
+            return
+
         # Gemini Python SDK doesn't natively support AsyncGenerator out-of-the-box easily without workarounds
         # For the MVP we await the whole stream generation or loop through the blocking sync iterable
         
@@ -129,9 +134,8 @@ class GeminiLLMProvider(BaseLLMProvider):
     async def generate_response_with_actions(self, prompt: str, system_prompt: Optional[str] = None, history: Optional[list] = None) -> tuple[str, Dict[str, Any]]:
         """Non-streaming call that returns text and parallel tool arguments (JSON)."""
         if not self.client:
-            std_log.error("❌ Gemini: Provider called but client is None (missing API key)")
-            logger.error("Gemini Provider called but the client is not initialized (missing API key).")
-            return "Server Error: Gemini Provider is unconfigured.", {}
+            std_log.warning("Gemini LLM: No API key configured, cannot generate response")
+            return "[Gemini API key not configured]", {}
 
         tools = self._build_tools_schema()
         
@@ -150,7 +154,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 contents.append({"role": role, "parts": [{"text": msg["content"]}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
         
-        std_log.info(f"🔄 Gemini: Calling API | model={self.model} | prompt=\"{prompt[:80]}\" | history_turns={len(contents)-1}")
+        std_log.info(f"Gemini: Calling API | model={self.model} | prompt=\"{prompt[:80]}\"| history_turns={len(contents)-1}")
              
         try:
             response = await asyncio.to_thread(
@@ -160,7 +164,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 config=genai.types.GenerateContentConfig(**config_kwargs)
             )
         except Exception as e:
-            std_log.error(f"❌ Gemini: API call FAILED | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Gemini: API call FAILED | {type(e).__name__}: {str(e)}")
             logger.error("Gemini API call failed", error=str(e))
             return f"API Error: {str(e)}", {}
         
@@ -176,7 +180,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                         spoken_text += part.text
                     if hasattr(part, 'function_call') and part.function_call:
                         fc = part.function_call
-                        std_log.info(f"⚡ Gemini: Function call detected | name={fc.name} args={fc.args}")
+                        std_log.info(f"Gemini: Function call detected | name={fc.name} args={fc.args}")
                         if fc.name == "update_agent_state":
                             args = dict(fc.args)
                             # Extract spoken_response from function args if text is empty
@@ -189,13 +193,13 @@ class GeminiLLMProvider(BaseLLMProvider):
                 # Fallback to simple .text if no candidates structure
                 spoken_text = response.text or ""
         except Exception as e:
-            std_log.warning(f"⚠️ Gemini: Error parsing response parts | {str(e)}")
+            std_log.warning(f"Gemini: Error parsing response parts | {str(e)}")
             try:
                 spoken_text = response.text or ""
             except Exception:
                 pass
                     
-        std_log.info(f"✅ Gemini: Response complete | text=\"{spoken_text[:80]}\" | actions={actions}")
+        std_log.info(f"Gemini: Response complete | text=\"{spoken_text[:80]}\"| actions={actions}")
         return spoken_text, actions
 
 
@@ -229,10 +233,10 @@ class GeminiTTSProvider(BaseTTSProvider):
     
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
         if not self.client:
-            std_log.error("❌ Gemini TTS: Client not initialized (missing API key)")
+            std_log.warning("Gemini TTS: No API key configured, cannot synthesize stream")
             return
         
-        std_log.info(f"🔊 Gemini TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
+        std_log.info(f"Gemini TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
         
         try:
             # The preview TTS model can sometimes fail if the prompt isn't clearly
@@ -255,7 +259,7 @@ class GeminiTTSProvider(BaseTTSProvider):
                 )
             )
         except Exception as e:
-            std_log.error(f"❌ Gemini TTS: API call failed | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Gemini TTS: API call failed | {type(e).__name__}: {str(e)}")
             return
         
         # Extract audio data from response
@@ -265,7 +269,7 @@ class GeminiTTSProvider(BaseTTSProvider):
             mime_type = audio_data.mime_type  # e.g. "audio/wav" or "audio/L16;codec=pcm;rate=24000"
             
             total_size = len(audio_bytes)
-            std_log.info(f"✅ Gemini TTS: Audio received | size={total_size} bytes ({total_size//1024}KB) mime={mime_type}")
+            std_log.info(f"Gemini TTS: Audio received | size={total_size} bytes ({total_size//1024}KB) mime={mime_type}")
             
             # If it's pure L16 PCM without a RIFF header, we MUST prepend one so browsers can play it
             if mime_type.startswith("audio/L16") and not audio_bytes.startswith(b'RIFF'):
@@ -280,7 +284,7 @@ class GeminiTTSProvider(BaseTTSProvider):
                 chunk_count += 1
                 yield audio_bytes[i:i + chunk_size]
             
-            std_log.info(f"📤 Gemini TTS: Yielded {chunk_count} chunks to transport")
+            std_log.info(f"Gemini TTS: Yielded {chunk_count} chunks to transport")
         except (IndexError, AttributeError) as e:
-            std_log.error(f"❌ Gemini TTS: Failed to parse audio response | {type(e).__name__}: {str(e)}")
+            std_log.error(f"Gemini TTS: Failed to parse audio response | {type(e).__name__}: {str(e)}")
 

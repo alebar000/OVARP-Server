@@ -61,17 +61,17 @@ class OpenAISTTProvider(BaseSTTProvider):
         # Note: OpenAI expects a named file or a tuple (filename, file_content)
         # Ideally, we receive WAV or similar encoded binary audio from the XR client
         try:
-            std_log.info(f"🎤 STT: Starting transcription | audio_size={len(audio_data)} bytes")
+            std_log.info(f"STT: Starting transcription | audio_size={len(audio_data)} bytes")
             file_tuple = ("audio.wav", audio_data, "audio/wav")
             transcription = await self.client.audio.transcriptions.create(
                 model=self.model,
                 file=file_tuple,
                 response_format="text"
             )
-            std_log.info(f"✅ STT: Transcription complete | text=\"{str(transcription)[:80]}\"")
+            std_log.info(f"STT: Transcription complete | text=\"{str(transcription)[:80]}\"")
             return transcription
         except Exception as e:
-            std_log.error(f"❌ STT: Transcription failed | {type(e).__name__}: {str(e)}")
+            std_log.error(f"STT: Transcription failed | {type(e).__name__}: {str(e)}")
             logger.error("STT transcription failed", error=str(e))
             return ""
 
@@ -186,7 +186,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         return OpenAIClientSingleton.get_client()
 
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
-        std_log.info(f"🔊 TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
+        std_log.info(f"TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
         audio_response = await self.client.audio.speech.create(
             model=self.model,
             voice=self.voice,
@@ -199,7 +199,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         # so 'async for' silently yields nothing. We read .content instead.
         audio_bytes = audio_response.content
         total_size = len(audio_bytes)
-        std_log.info(f"✅ TTS: Audio received | size={total_size} bytes ({total_size//1024}KB)")
+        std_log.info(f"TTS: Audio received | size={total_size} bytes ({total_size//1024}KB)")
         
         # Yield in chunks for streaming over ZMQ/WS
         chunk_size = 32 * 1024  # 32KB chunks
@@ -207,4 +207,4 @@ class OpenAITTSProvider(BaseTTSProvider):
         for i in range(0, total_size, chunk_size):
             chunk_count += 1
             yield audio_bytes[i:i + chunk_size]
-        std_log.info(f"📤 TTS: Yielded {chunk_count} chunks to transport")
+        std_log.info(f"TTS: Yielded {chunk_count} chunks to transport")

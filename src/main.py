@@ -13,6 +13,7 @@ License: MIT
 
 import asyncio
 import os
+import time
 import json
 import logging
 from pathlib import Path
@@ -48,7 +49,7 @@ def _is_testing():
     if os.getenv("OVARP_TESTING"):
         return True
     if os.getenv("OAF_TESTING"):
-        logging.getLogger("OVARP").warning("⚠️  OAF_TESTING is deprecated, use OVARP_TESTING instead.")
+        logging.getLogger("OVARP").warning("OAF_TESTING is deprecated, use OVARP_TESTING instead.")
         return True
     return False
 
@@ -149,9 +150,9 @@ async def set_llm_config(update: LLMConfigUpdate):
         orchestrator.set_active_llm(update.provider_id)
     if update.tts_provider_id:
         orchestrator.set_active_tts(update.tts_provider_id)
-    if update.tts_voice and orchestrator.active_tts_id in orchestrator.tts_providers:
+    if update.tts_voice is not None and orchestrator.active_tts_id in orchestrator.tts_providers:
         orchestrator.tts_providers[orchestrator.active_tts_id].voice = update.tts_voice
-    if update.system_prompt:
+    if update.system_prompt is not None:
         orchestrator.set_system_prompt(update.system_prompt)
         
     active_tts_obj = orchestrator.tts_providers.get(orchestrator.active_tts_id)
@@ -221,7 +222,7 @@ async def check_provider_health():
         else:
             # Custom provider: check if it has a base_url configured
             provider = orchestrator.llm_providers[name]
-            results[name] = "ok" if hasattr(provider, 'base_url') and provider.base_url else "ok"
+            results[name] = "ok" if hasattr(provider, 'base_url') and provider.base_url else "error"
     return results
 
 @app.get("/api/export")
@@ -256,9 +257,9 @@ def _load_custom_providers():
             if "tts" in types:
                 orchestrator.register_provider(name, CustomTTSProvider(name, base_url, model, api_key), "tts")
         std_log = logging.getLogger("OVARP.custom")
-        std_log.info(f"🔌 Loaded {len(providers)} custom provider(s) from {CUSTOM_PROVIDERS_FILE.name}")
+        std_log.info(f"Loaded {len(providers)} custom provider(s) from {CUSTOM_PROVIDERS_FILE.name}")
     except Exception as e:
-        logging.getLogger("OVARP.custom").warning(f"⚠️ Could not load custom providers: {e}")
+        logging.getLogger("OVARP.custom").warning(f"Could not load custom providers: {e}")
 
 def _save_custom_providers(registry: dict):
     """Persist the custom providers registry to YAML."""
@@ -1079,7 +1080,7 @@ static_path = os.path.join(os.path.dirname(__file__), "static")
 _headless_new = os.environ.get("OVARP_HEADLESS", "").lower() in ["true", "1", "yes"]
 _headless_legacy = os.environ.get("OAF_HEADLESS", "").lower() in ["true", "1", "yes"]
 if _headless_legacy and not _headless_new:
-    logging.getLogger("OVARP").warning("⚠️  OAF_HEADLESS is deprecated, use OVARP_HEADLESS instead.")
+    logging.getLogger("OVARP").warning("OAF_HEADLESS is deprecated, use OVARP_HEADLESS instead.")
 headless_mode = _headless_new or _headless_legacy
 
 class NoCacheStaticFiles(StaticFiles):
