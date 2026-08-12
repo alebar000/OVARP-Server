@@ -1493,7 +1493,7 @@
 
  <!-- App Scripts -->
  <script type="module">
- import OVARPClient from './sdk/ovaf-client.js?v=12';
+ import OVARPClient from './sdk/ovaf-client.js?v=13';
 
  // Connect OVARP client for WebSockets and 3D Avatar Rendering
  const ovarpClient = new OVARPClient({
@@ -2057,25 +2057,136 @@
  }
  }
 
- // --- LLM Config Loader & Saver ---
+ // --- LLM & TTS Config Loader & Saver ---
+ async function updateTTSVoices(providerId) {
+ const voiceSel = document.getElementById('tts-voice-select');
+ if (!voiceSel) return;
+
+ voiceSel.innerHTML = '';
+ const voices = {
+ openai: [
+ { id: 'alloy', label: 'Alloy (Neutral)' },
+ { id: 'ash', label: 'Ash (Masculine)' },
+ { id: 'coral', label: 'Coral (Feminine)' },
+ { id: 'echo', label: 'Echo (Masculine)' },
+ { id: 'fable', label: 'Fable (Neutral)' },
+ { id: 'nova', label: 'Nova (Feminine)' },
+ { id: 'onyx', label: 'Onyx (Masculine)' },
+ { id: 'sage', label: 'Sage (Neutral)' },
+ { id: 'shimmer', label: 'Shimmer (Feminine)' }
+ ],
+ gemini: [
+ { id: 'Kore', label: 'Kore (Feminine)' },
+ { id: 'Puck', label: 'Puck (Masculine)' },
+ { id: 'Charon', label: 'Charon (Masculine)' },
+ { id: 'Fenrir', label: 'Fenrir (Masculine)' },
+ { id: 'Aoede', label: 'Aoede (Feminine)' },
+ { id: 'Leda', label: 'Leda (Feminine)' },
+ { id: 'Orus', label: 'Orus (Masculine)' },
+ { id: 'Zephyr', label: 'Zephyr (Neutral)' },
+ { id: 'Achernar', label: 'Achernar (Feminine)' },
+ { id: 'Gacrux', label: 'Gacrux (Masculine)' }
+ ]
+ };
+
+ const provVoices = voices[providerId] || [
+ { id: 'default', label: `${(providerId || 'Custom').toUpperCase()} Default Voice` }
+ ];
+
+ provVoices.forEach(v => {
+ const opt = document.createElement('option');
+ opt.value = v.id;
+ opt.textContent = v.label;
+ voiceSel.appendChild(opt);
+ });
+ }
+ window.updateTTSVoices = updateTTSVoices;
+
+ async function checkProviderHealth() {
+ const healthEl = document.getElementById('provider-health');
+ if (!healthEl) return;
+
+ try {
+ const resp = await fetch('/api/health/providers');
+ const data = await resp.json();
+ healthEl.innerHTML = '';
+
+ for (const [provider, status] of Object.entries(data)) {
+ const badge = document.createElement('span');
+ if (status === 'ok') {
+ badge.className = 'badge badge-emerald';
+ badge.textContent = `● ${provider.toUpperCase()}: Ready`;
+ } else {
+ badge.className = 'badge badge-rose';
+ badge.textContent = `● ${provider.toUpperCase()}: Key Missing / Error`;
+ }
+ healthEl.appendChild(badge);
+ }
+ } catch (e) {
+ console.warn('Provider health check failed:', e);
+ }
+ }
+ window.checkProviderHealth = checkProviderHealth;
+
  async function loadLLMConfig() {
  try {
- const resp = await fetch('/api/llm/config');
- const data = await resp.json();
+ const [llmResp, provResp] = await Promise.all([
+ fetch('/api/llm/config'),
+ fetch('/api/providers')
+ ]);
+ const data = await llmResp.json();
+ const provData = await provResp.json();
+
  if (data) {
+ // 1. Populate LLM Provider Select dropdown
  const llmSel = document.getElementById('llm-provider-select');
- if (llmSel && data.active_provider) {
- llmSel.value = data.active_provider;
+ if (llmSel) {
+ const currentVal = llmSel.value || data.active_provider || 'openai';
+ llmSel.innerHTML = '';
+
+ const providers = provData.available_llm || data.available_providers || ['openai', 'gemini'];
+ providers.forEach(p => {
+ const opt = document.createElement('option');
+ opt.value = p;
+ opt.textContent = p.toUpperCase() + (p === 'openai' ? ' (OpenAI API)' : p === 'gemini' ? ' (Google Gemini Pro/Flash)' : '');
+ llmSel.appendChild(opt);
+ });
+ llmSel.value = providers.includes(currentVal) ? currentVal : (data.active_provider || providers[0]);
  }
+
+ // 2. Populate TTS Provider Select dropdown
+ const ttsSel = document.getElementById('tts-provider-select');
+ if (ttsSel) {
+ const currentTts = ttsSel.value || data.active_tts_provider || 'openai';
+ ttsSel.innerHTML = '';
+
+ const ttsProviders = provData.available_tts || data.available_tts_providers || ['openai', 'gemini'];
+ ttsProviders.forEach(p => {
+ const opt = document.createElement('option');
+ opt.value = p;
+ opt.textContent = p.toUpperCase() + (p === 'openai' ? ' (OpenAI TTS)' : p === 'gemini' ? ' (Gemini Voice)' : '');
+ ttsSel.appendChild(opt);
+ });
+ ttsSel.value = ttsProviders.includes(currentTts) ? currentTts : (data.active_tts_provider || ttsProviders[0]);
+ 
+ ttsSel.onchange = (e) => updateTTSVoices(e.target.value);
+ updateTTSVoices(ttsSel.value);
+ }
+
+ // 3. System Prompt
  const promptEl = document.getElementById('system-prompt');
  if (promptEl && data.system_prompt !== undefined) {
  promptEl.value = data.system_prompt || '';
  }
+
+ // 4. TTS Toggle Button State
  const ttsBtn = document.getElementById('tts-toggle-btn');
  if (ttsBtn) {
- ttsBtn.textContent = data.tts_enabled ? ' TTS ON' : '... TTS OFF';
+ ttsBtn.textContent = data.tts_enabled ? 'TTS ON' : 'TTS OFF';
  ttsBtn.className = data.tts_enabled ? 'btn btn-outline-warning flex-fill' : 'btn btn-outline-secondary flex-fill';
  }
+
+ checkProviderHealth();
  }
  } catch (e) {
  console.warn('Failed to load LLM config:', e);
@@ -2093,8 +2204,9 @@
  body: JSON.stringify({ provider_id: provider, system_prompt: prompt })
  });
  const data = await resp.json();
- showToast('LLM Configuration saved & applied', 'success');
+ showToast(`LLM Provider set to ${provider.toUpperCase()} & saved`, 'success');
  updateHeaderIndicators();
+ checkProviderHealth();
  } catch (e) {
  showToast('Failed to save LLM configuration', 'error');
  }
@@ -2107,7 +2219,7 @@
  const data = await resp.json();
  const ttsBtn = document.getElementById('tts-toggle-btn');
  if (ttsBtn) {
- ttsBtn.textContent = data.tts_enabled ? ' TTS ON' : '... TTS OFF';
+ ttsBtn.textContent = data.tts_enabled ? 'TTS ON' : 'TTS OFF';
  }
  showToast(`TTS ${data.tts_enabled ? 'enabled' : 'disabled'}`, 'info');
  updateHeaderIndicators();
@@ -2612,52 +2724,58 @@
  };
 
  window.updateKeysInMemory = async function() {
- const openai = document.getElementById('key-openai').value.trim();
- const gemini = document.getElementById('key-gemini').value.trim();
- const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
+  const openai = document.getElementById('key-openai').value.trim();
+  const gemini = document.getElementById('key-gemini').value.trim();
+  const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
 
- const keys = {};
- if (openai) keys.openai = openai;
- if (gemini) keys.gemini = gemini;
- if (elevenlabs) keys.elevenlabs = elevenlabs;
+  const keys = {};
+  if (openai) keys.openai = openai;
+  if (gemini) keys.gemini = gemini;
+  if (elevenlabs) keys.elevenlabs = elevenlabs;
 
- try {
- const resp = await fetch('/api/keys/update', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ keys: keys, persist: false })
- });
- const data = await resp.json();
- showToast('API Keys updated in memory', 'success');
- loadKeyStoreStatus();
- } catch (e) {
- showToast('Failed to update keys', 'error');
- }
- };
+  try {
+  const resp = await fetch('/api/keys/update', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ keys: keys, persist: false })
+  });
+  const data = await resp.json();
+  showToast('API Keys updated in memory & providers refreshed', 'success');
+  await loadKeyStoreStatus();
+  await loadLLMConfig();
+  if (window.updateHeaderIndicators) updateHeaderIndicators();
+  if (window.refreshOverviewTelemetry) refreshOverviewTelemetry();
+  } catch (e) {
+  showToast('Failed to update keys', 'error');
+  }
+  };
 
- window.persistKeysToEnv = async function() {
- const openai = document.getElementById('key-openai').value.trim();
- const gemini = document.getElementById('key-gemini').value.trim();
- const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
+  window.persistKeysToEnv = async function() {
+  const openai = document.getElementById('key-openai').value.trim();
+  const gemini = document.getElementById('key-gemini').value.trim();
+  const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
 
- const keys = {};
- if (openai) keys.openai = openai;
- if (gemini) keys.gemini = gemini;
- if (elevenlabs) keys.elevenlabs = elevenlabs;
+  const keys = {};
+  if (openai) keys.openai = openai;
+  if (gemini) keys.gemini = gemini;
+  if (elevenlabs) keys.elevenlabs = elevenlabs;
 
- try {
- const resp = await fetch('/api/keys/persist', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ keys: keys })
- });
- const data = await resp.json();
- showToast('API Keys persisted to .env', 'success');
- loadKeyStoreStatus();
- } catch (e) {
- showToast('Failed to persist keys', 'error');
- }
- };
+  try {
+  const resp = await fetch('/api/keys/persist', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ keys: keys })
+  });
+  const data = await resp.json();
+  showToast('API Keys saved & persisted to .env', 'success');
+  await loadKeyStoreStatus();
+  await loadLLMConfig();
+  if (window.updateHeaderIndicators) updateHeaderIndicators();
+  if (window.refreshOverviewTelemetry) refreshOverviewTelemetry();
+  } catch (e) {
+  showToast('Failed to persist keys', 'error');
+  }
+  };
 
  // --- CSV Export Handler ---
  async function exportTelemetryCSV() {
