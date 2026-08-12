@@ -123,15 +123,20 @@ async def get_config():
 
 class LLMConfigUpdate(BaseModel):
     provider_id: str | None = None
+    tts_provider_id: str | None = None
+    tts_voice: str | None = None
     system_prompt: str | None = None
 
 @app.get("/api/llm/config")
 async def get_llm_config():
     """Returns the current active LLM state"""
+    active_tts_obj = orchestrator.tts_providers.get(orchestrator.active_tts_id)
+    current_voice = getattr(active_tts_obj, 'voice', 'alloy') if active_tts_obj else 'alloy'
     return {
         "active_provider": orchestrator.active_llm_id,
         "available_providers": list(orchestrator.llm_providers.keys()),
         "active_tts_provider": orchestrator.active_tts_id,
+        "active_tts_voice": current_voice,
         "available_tts_providers": list(orchestrator.tts_providers.keys()),
         "system_prompt": orchestrator.system_prompt,
         "tts_enabled": orchestrator.tts_enabled
@@ -142,12 +147,19 @@ async def set_llm_config(update: LLMConfigUpdate):
     """Dynamically updates the Orchestrator without restarting"""
     if update.provider_id:
         orchestrator.set_active_llm(update.provider_id)
+    if update.tts_provider_id:
+        orchestrator.set_active_tts(update.tts_provider_id)
+    if update.tts_voice and orchestrator.active_tts_id in orchestrator.tts_providers:
+        orchestrator.tts_providers[orchestrator.active_tts_id].voice = update.tts_voice
     if update.system_prompt:
         orchestrator.set_system_prompt(update.system_prompt)
         
+    active_tts_obj = orchestrator.tts_providers.get(orchestrator.active_tts_id)
+    current_voice = getattr(active_tts_obj, 'voice', 'alloy') if active_tts_obj else 'alloy'
     return {
         "active_provider": orchestrator.active_llm_id,
         "active_tts_provider": orchestrator.active_tts_id,
+        "active_tts_voice": current_voice,
         "system_prompt": orchestrator.system_prompt,
         "tts_enabled": orchestrator.tts_enabled
     }

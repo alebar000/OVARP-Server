@@ -2044,10 +2044,10 @@
  (config.agents || []).forEach(a => agentSel.add(new Option(`${a.name} (${a.id})`, a.id)));
  }
 
- const llmSel = document.getElementById('llm-provider-select');
- if (llmSel) {
- llmSel.innerHTML = '';
- (config.llm_providers || []).forEach(p => llmSel.add(new Option(p.name, p.id)));
+ const profAgentSel = document.getElementById('profile-agent-select');
+ if (profAgentSel) {
+ profAgentSel.innerHTML = '<option value="all">All Agents</option>';
+ (config.agents || []).forEach(a => profAgentSel.add(new Option(`${a.name} (${a.id})`, a.id)));
  }
 
  renderDynamicActions(config);
@@ -2195,16 +2195,23 @@
  window.loadLLMConfig = loadLLMConfig;
 
  async function saveLLMConfig() {
- const provider = document.getElementById('llm-provider-select').value;
- const prompt = document.getElementById('system-prompt').value;
+ const provider = document.getElementById('llm-provider-select')?.value || 'openai';
+ const ttsProvider = document.getElementById('tts-provider-select')?.value || 'openai';
+ const ttsVoice = document.getElementById('tts-voice-select')?.value || 'alloy';
+ const prompt = document.getElementById('system-prompt')?.value || '';
  try {
  const resp = await fetch('/api/llm/config', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ provider_id: provider, system_prompt: prompt })
+ body: JSON.stringify({
+ provider_id: provider,
+ tts_provider_id: ttsProvider,
+ tts_voice: ttsVoice,
+ system_prompt: prompt
+ })
  });
  const data = await resp.json();
- showToast(`LLM Provider set to ${provider.toUpperCase()} & saved`, 'success');
+ showToast(`Configuration saved: LLM (${provider.toUpperCase()}), TTS (${ttsProvider.toUpperCase()})`, 'success');
  updateHeaderIndicators();
  checkProviderHealth();
  } catch (e) {
@@ -2881,14 +2888,23 @@
  }
  }
 
- // Listen for Bootstrap tab shown event on LLM Playground
- const llmTab = document.getElementById('llm-tab');
- if (llmTab) {
- llmTab.addEventListener('shown.bs.tab', loadAvatarOnTabShow);
- avatarLog('Listener attached to llm-tab');
- } else {
- avatarLog('ERROR: llm-tab element not found!', 'error');
+ // Listen for Bootstrap tab shown event on WoZ Control & LLM Playground tabs
+ ['woz-tab', 'llm-tab'].forEach(tabId => {
+ const tabEl = document.getElementById(tabId);
+ if (tabEl) {
+ tabEl.addEventListener('shown.bs.tab', loadAvatarOnTabShow);
+ avatarLog(`Listener attached to ${tabId}`);
  }
+ });
+
+ document.getElementById('stt-provider-select')?.addEventListener('change', function() {
+ const val = this.value;
+ const sttStatus = document.getElementById('stt-status');
+ if (sttStatus) {
+ sttStatus.textContent = val === 'openai' ? 'Whisper (OpenAI API)' : 'WebSpeech (Browser engine)';
+ }
+ showToast(`STT engine set to: ${val === 'openai' ? 'OpenAI Whisper' : 'Browser WebSpeech'}`, 'info');
+ });
 
  // --- Avatar Select & Upload Handlers ---
  document.getElementById('avatar-select')?.addEventListener('change', async function() {
