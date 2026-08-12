@@ -1136,37 +1136,40 @@
  </p>
 
  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
- <div class="d-flex justify-content-between align-items-center mb-2">
- <label class="form-label mb-0 font-weight-bold text-info">OpenAI API Key</label>
- <span id="status-key-openai" class="badge bg-secondary">[NOT CONFIGURED]</span>
- </div>
- <div class="input-group">
- <input type="password" id="key-openai" class="form-control" placeholder="sk-...">
- <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-openai')"></button>
- </div>
- </div>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+  <label class="form-label mb-0 font-weight-bold text-info">OpenAI API Key</label>
+  <span id="status-key-openai" class="badge bg-secondary">[NOT CONFIGURED]</span>
+  </div>
+  <div class="input-group">
+  <input type="password" id="key-openai" class="form-control" placeholder="sk-...">
+  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-openai')">Show / Hide</button>
+  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('openai')" title="Clear key from memory & .env">Clear Key</button>
+  </div>
+  </div>
 
- <div class="mb-4 p-3 bg-dark rounded border border-secondary">
- <div class="d-flex justify-content-between align-items-center mb-2">
- <label class="form-label mb-0 font-weight-bold text-info">Gemini API Key</label>
- <span id="status-key-gemini" class="badge bg-secondary">[NOT CONFIGURED]</span>
- </div>
- <div class="input-group">
- <input type="password" id="key-gemini" class="form-control" placeholder="AIza...">
- <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-gemini')"></button>
- </div>
- </div>
+  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+  <label class="form-label mb-0 font-weight-bold text-info">Gemini API Key</label>
+  <span id="status-key-gemini" class="badge bg-secondary">[NOT CONFIGURED]</span>
+  </div>
+  <div class="input-group">
+  <input type="password" id="key-gemini" class="form-control" placeholder="AIza...">
+  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-gemini')">Show / Hide</button>
+  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('gemini')" title="Clear key from memory & .env">Clear Key</button>
+  </div>
+  </div>
 
- <div class="mb-4 p-3 bg-dark rounded border border-secondary">
- <div class="d-flex justify-content-between align-items-center mb-2">
- <label class="form-label mb-0 font-weight-bold text-info">ElevenLabs API Key</label>
- <span id="status-key-elevenlabs" class="badge bg-secondary">[NOT CONFIGURED]</span>
- </div>
- <div class="input-group">
- <input type="password" id="key-elevenlabs" class="form-control" placeholder="sk_...">
- <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-elevenlabs')"></button>
- </div>
- </div>
+  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+  <label class="form-label mb-0 font-weight-bold text-info">ElevenLabs API Key</label>
+  <span id="status-key-elevenlabs" class="badge bg-secondary">[NOT CONFIGURED]</span>
+  </div>
+  <div class="input-group">
+  <input type="password" id="key-elevenlabs" class="form-control" placeholder="sk_...">
+  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-elevenlabs')">Show / Hide</button>
+  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('elevenlabs')" title="Clear key from memory & .env">Clear Key</button>
+  </div>
+  </div>
 
  <div class="d-flex gap-3 mt-4">
  <button id="btn-update-keys-memory" class="btn btn-warning flex-fill fw-bold" onclick="updateKeysInMemory()">
@@ -2795,38 +2798,64 @@
  }
 
  window.toggleKeyVisibility = function(inputId) {
- const input = document.getElementById(inputId);
- if (input) {
- input.type = input.type === 'password' ? 'text' : 'password';
- }
- };
-
- window.updateKeysInMemory = async function() {
-  const openai = document.getElementById('key-openai').value.trim();
-  const gemini = document.getElementById('key-gemini').value.trim();
-  const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
-
-  const keys = {};
-  if (openai) keys.openai = openai;
-  if (gemini) keys.gemini = gemini;
-  if (elevenlabs) keys.elevenlabs = elevenlabs;
-
-  try {
-  const resp = await fetch('/api/keys/update', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ keys: keys, persist: false })
-  });
-  const data = await resp.json();
-  showToast('API Keys updated in memory & providers refreshed', 'success');
-  await loadKeyStoreStatus();
-  await loadLLMConfig();
-  if (window.updateHeaderIndicators) updateHeaderIndicators();
-  if (window.refreshOverviewTelemetry) refreshOverviewTelemetry();
-  } catch (e) {
-  showToast('Failed to update keys', 'error');
+  const input = document.getElementById(inputId);
+  if (input) {
+  input.type = input.type === 'password' ? 'text' : 'password';
   }
   };
+
+  window.clearKeyField = async function(provider) {
+    if (!confirm(`Are you sure you want to clear/delete the ${provider.toUpperCase()} API key from memory and .env?`)) return;
+    const input = document.getElementById(`key-${provider}`);
+    if (input) {
+      input.value = '';
+      input.placeholder = '[CLEARED / DELETED]';
+    }
+
+    try {
+      const keys = {};
+      keys[provider] = '';
+      await fetch('/api/keys/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: keys, persist: true })
+      });
+      showToast(`${provider.toUpperCase()} key cleared from memory & deleted from .env`, 'info');
+      await loadKeyStoreStatus();
+      await loadLLMConfig();
+      if (window.updateHeaderIndicators) updateHeaderIndicators();
+      if (window.refreshOverviewTelemetry) refreshOverviewTelemetry();
+    } catch (e) {
+      showToast(`Failed to clear ${provider} key`, 'error');
+    }
+  };
+
+  window.updateKeysInMemory = async function() {
+   const openai = document.getElementById('key-openai').value.trim();
+   const gemini = document.getElementById('key-gemini').value.trim();
+   const elevenlabs = document.getElementById('key-elevenlabs').value.trim();
+
+   const keys = {};
+   if (openai) keys.openai = openai;
+   if (gemini) keys.gemini = gemini;
+   if (elevenlabs) keys.elevenlabs = elevenlabs;
+
+   try {
+   const resp = await fetch('/api/keys/update', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ keys: keys, persist: false })
+   });
+   const data = await resp.json();
+   showToast('API Keys updated in memory & providers refreshed', 'success');
+   await loadKeyStoreStatus();
+   await loadLLMConfig();
+   if (window.updateHeaderIndicators) updateHeaderIndicators();
+   if (window.refreshOverviewTelemetry) refreshOverviewTelemetry();
+   } catch (e) {
+   showToast('Failed to update keys', 'error');
+   }
+   };
 
   window.persistKeysToEnv = async function() {
   const openai = document.getElementById('key-openai').value.trim();

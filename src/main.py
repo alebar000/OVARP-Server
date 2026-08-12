@@ -613,13 +613,16 @@ def _persist_to_env_file(key_updates: dict):
             k, _ = stripped.split("=", 1)
             k = k.strip()
             if k in key_updates:
-                new_lines.append(f"{k}={key_updates[k]}\n")
+                val = key_updates[k]
+                if val:
+                    new_lines.append(f"{k}={val}\n")
+                # If val is empty, skip writing to delete the line from .env
                 updated_keys.add(k)
                 continue
         new_lines.append(line)
 
     for k, v in key_updates.items():
-        if k not in updated_keys:
+        if k not in updated_keys and v:
             if new_lines and not new_lines[-1].endswith("\n"):
                 new_lines.append("\n")
             new_lines.append(f"{k}={v}\n")
@@ -658,7 +661,10 @@ async def update_api_keys(req: KeyUpdateRequest):
             updates[env_key] = v
 
     for env_key, val in updates.items():
-        os.environ[env_key] = val
+        if val:
+            os.environ[env_key] = val
+        else:
+            os.environ.pop(env_key, None)
 
     # Reset singletons
     OpenAIClientSingleton.reset_client()
@@ -691,12 +697,18 @@ async def persist_api_keys(req: KeyPersistRequest):
     if req.provider and req.api_key is not None:
         env_key = ENV_KEY_MAP.get(req.provider, req.provider)
         updates[env_key] = req.api_key
-        os.environ[env_key] = req.api_key
+        if req.api_key:
+            os.environ[env_key] = req.api_key
+        else:
+            os.environ.pop(env_key, None)
     if req.keys:
         for k, v in req.keys.items():
             env_key = ENV_KEY_MAP.get(k, k)
             updates[env_key] = v
-            os.environ[env_key] = v
+            if v:
+                os.environ[env_key] = v
+            else:
+                os.environ.pop(env_key, None)
 
     if not updates:
         for key_name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]:
