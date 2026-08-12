@@ -2757,24 +2757,35 @@
  updateKeyFieldStatus('elevenlabs', keys.ELEVENLABS_API_KEY);
 
  const headerBadge = document.getElementById('nav-key-storage-badge');
- const summaryBadge = document.getElementById('keystore-summary-badge');
+  const summaryBadge = document.getElementById('keystore-summary-badge');
+  const ovKeyStatus = document.getElementById('ov-key-status');
 
- const keyList = [keys.OPENAI_API_KEY, keys.GEMINI_API_KEY, keys.ELEVENLABS_API_KEY].filter(Boolean);
- let mainBadge = '[NOT CONFIGURED]';
- if (keyList.some(k => k.badge && k.badge.includes('[SAVED IN .ENV]'))) {
-   mainBadge = '[SAVED IN .ENV]';
- } else if (keyList.some(k => k.badge && k.badge.includes('[IN MEMORY ONLY'))) {
-   mainBadge = '[IN MEMORY ONLY]';
- }
+  const keyList = [keys.OPENAI_API_KEY, keys.GEMINI_API_KEY, keys.ELEVENLABS_API_KEY].filter(Boolean);
+  let mainBadge = '[NOT CONFIGURED]';
+  if (keyList.some(k => k.badge && k.badge.includes('[SAVED IN .ENV]'))) {
+    mainBadge = '[SAVED IN .ENV]';
+  } else if (keyList.some(k => k.badge && k.badge.includes('[IN MEMORY ONLY'))) {
+    mainBadge = '[IN MEMORY ONLY]';
+  }
 
- if (headerBadge) {
- headerBadge.textContent = mainBadge;
- setKeyBadgeStyle(headerBadge, mainBadge);
- }
- if (summaryBadge) {
- summaryBadge.textContent = mainBadge;
- setKeyBadgeStyle(summaryBadge, mainBadge);
- }
+  if (headerBadge) {
+  headerBadge.textContent = mainBadge;
+  setKeyBadgeStyle(headerBadge, mainBadge);
+  }
+  if (summaryBadge) {
+  summaryBadge.textContent = mainBadge;
+  setKeyBadgeStyle(summaryBadge, mainBadge);
+  }
+  if (ovKeyStatus) {
+    ovKeyStatus.textContent = mainBadge;
+    if (mainBadge.includes('[SAVED IN .ENV]')) {
+      ovKeyStatus.style.color = 'var(--emerald)';
+    } else if (mainBadge.includes('[IN MEMORY ONLY')) {
+      ovKeyStatus.style.color = 'var(--amber)';
+    } else {
+      ovKeyStatus.style.color = 'var(--text-muted)';
+    }
+  }
  }
  } catch (e) {
  console.warn('Failed to load key status:', e);
@@ -2824,14 +2835,14 @@
     if (input.type === 'password') {
       input.type = 'text';
       if (btnEl) btnEl.textContent = 'Hide';
-      if (info.is_set && info.masked_key && !input.value) {
-        input.placeholder = info.masked_key;
+      if (info.full_key && !input.value) {
+        input.value = info.full_key;
       }
     } else {
       input.type = 'password';
       if (btnEl) btnEl.textContent = 'Show';
-      if (info.is_set && !input.value) {
-        input.placeholder = '••••••••••••••••••••';
+      if (info.full_key && input.value === info.full_key) {
+        input.value = '';
       }
     }
   };

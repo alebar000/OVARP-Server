@@ -591,6 +591,7 @@ def _build_key_status_item(key_name: str) -> dict:
         "key_name": key_name,
         "is_set": is_set,
         "masked_key": masked,
+        "full_key": mem_val if mem_val else "",
         "persisted": persisted_in_env,
         "persisted_in_env": persisted_in_env,
         "badge": badge,
