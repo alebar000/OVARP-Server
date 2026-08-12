@@ -206,23 +206,25 @@ async def check_provider_health():
     """Validates API key connectivity for each registered provider dynamically."""
     import asyncio
     results = {}
-    for name in orchestrator.llm_providers:
+    for name, provider in orchestrator.llm_providers.items():
         try:
             if name == "openai":
                 from src.providers.openai_provider import OpenAIClientSingleton
-                client = OpenAIClientSingleton.get_client()
-                await client.models.list()
-                results[name] = "ok"
+                if not os.getenv("OPENAI_API_KEY"):
+                    results[name] = "error"
+                else:
+                    client = OpenAIClientSingleton.get_client()
+                    await client.models.list()
+                    results[name] = "ok"
             elif name == "gemini":
                 from src.providers.gemini_provider import GeminiClientSingleton
                 client = GeminiClientSingleton.get_client()
-                if client is None:
-                    raise ValueError("GEMINI_API_KEY not set")
-                await asyncio.to_thread(client.models.list)
-                results[name] = "ok"
+                if not client or not os.getenv("GEMINI_API_KEY"):
+                    results[name] = "error"
+                else:
+                    await asyncio.to_thread(lambda: list(client.models.list(config={"page_size": 1})))
+                    results[name] = "ok"
             else:
-                # Custom / third-party providers - test via their base_url
-                provider = orchestrator.llm_providers[name]
                 if hasattr(provider, 'base_url'):
                     from src.providers.custom_provider import test_custom_endpoint
                     ok, _ = await test_custom_endpoint(
@@ -232,10 +234,9 @@ async def check_provider_health():
                     )
                     results[name] = "ok" if ok else "error"
                 else:
-                    results[name] = "ok"  # No way to test, assume ok
-        except Exception as e:
+                    results[name] = "ok"
+        except Exception:
             results[name] = "error"
-            results[f"{name}_error"] = str(e)[:120]
     return results
 
 @app.get("/api/export")
