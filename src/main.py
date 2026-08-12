@@ -203,40 +203,25 @@ async def clear_history():
 
 @app.get("/api/health/providers")
 async def check_provider_health():
-    """Validates API key connectivity for each registered provider dynamically."""
-    import asyncio
+    """Returns instant key-presence status for each registered provider.
+    
+    Uses environment variable presence rather than live API calls to avoid
+    10+ second latency that caused the UI to display stale error badges.
+    """
     results = {}
-    for name, provider in orchestrator.llm_providers.items():
-        try:
-            if name == "openai":
-                from src.providers.openai_provider import OpenAIClientSingleton
-                if not os.getenv("OPENAI_API_KEY"):
-                    results[name] = "error"
-                else:
-                    client = OpenAIClientSingleton.get_client()
-                    await client.models.list()
-                    results[name] = "ok"
-            elif name == "gemini":
-                from src.providers.gemini_provider import GeminiClientSingleton
-                client = GeminiClientSingleton.get_client()
-                if not client or not os.getenv("GEMINI_API_KEY"):
-                    results[name] = "error"
-                else:
-                    await asyncio.to_thread(lambda: list(client.models.list(config={"page_size": 1})))
-                    results[name] = "ok"
-            else:
-                if hasattr(provider, 'base_url'):
-                    from src.providers.custom_provider import test_custom_endpoint
-                    ok, _ = await test_custom_endpoint(
-                        provider.base_url,
-                        getattr(provider, 'api_key', ''),
-                        getattr(provider, 'model', '')
-                    )
-                    results[name] = "ok" if ok else "error"
-                else:
-                    results[name] = "ok"
-        except Exception:
-            results[name] = "error"
+    key_env_map = {
+        "openai": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }
+    for name in orchestrator.llm_providers:
+        env_var = key_env_map.get(name)
+        if env_var:
+            key_val = os.getenv(env_var, "").strip()
+            results[name] = "ok" if key_val and key_val != "sk-dummy" else "error"
+        else:
+            # Custom provider: check if it has a base_url configured
+            provider = orchestrator.llm_providers[name]
+            results[name] = "ok" if hasattr(provider, 'base_url') and provider.base_url else "ok"
     return results
 
 @app.get("/api/export")

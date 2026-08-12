@@ -2186,7 +2186,7 @@
  ttsBtn.className = data.tts_enabled ? 'btn btn-outline-warning flex-fill' : 'btn btn-outline-secondary flex-fill';
  }
 
- checkProviderHealth();
+ await checkProviderHealth();
  }
  } catch (e) {
  console.warn('Failed to load LLM config:', e);
@@ -2213,7 +2213,7 @@
  const data = await resp.json();
  showToast(`Configuration saved: LLM (${provider.toUpperCase()}), TTS (${ttsProvider.toUpperCase()})`, 'success');
  updateHeaderIndicators();
- checkProviderHealth();
+ await checkProviderHealth();
  } catch (e) {
  showToast('Failed to save LLM configuration', 'error');
  }
