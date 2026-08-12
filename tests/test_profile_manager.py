@@ -134,6 +134,32 @@ class TestProfileManager:
         fresh_manager.load_profiles("nonexistent_dir_xyz")
         assert len(fresh_manager.list_profiles()) == 0
 
+    def test_delete_profile_memory_only(self, fresh_manager, sample_profile):
+        fresh_manager._profiles["test_therapist"] = sample_profile
+        assert fresh_manager.get_profile("test_therapist") is not None
+
+        result = fresh_manager.delete_profile("test_therapist")
+        assert result is True
+        assert fresh_manager.get_profile("test_therapist") is None
+
+        # Repeat delete should return False
+        assert fresh_manager.delete_profile("test_therapist") is False
+
+    def test_delete_profile_with_disk_file(self, fresh_manager, tmp_path):
+        profile_file = tmp_path / "disk_profile.yaml"
+        profile_file.write_text("id: disk_profile\nname: Disk Agent\npersonality:\n  system_prompt: Hello\n")
+        fresh_manager.load_profiles(tmp_path)
+        assert fresh_manager.get_profile("disk_profile") is not None
+        assert profile_file.exists()
+
+        result = fresh_manager.delete_profile("disk_profile")
+        assert result is True
+        assert fresh_manager.get_profile("disk_profile") is None
+        assert not profile_file.exists()
+
+    def test_delete_profile_not_found(self, fresh_manager):
+        assert fresh_manager.delete_profile("nonexistent_id") is False
+
 
 class TestConditionsMigration:
     def test_migrate_conditions(self, fresh_manager):

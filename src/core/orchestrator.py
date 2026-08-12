@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Dialog Orchestrator
+Open Virtual Agent Research Platform (OVARP) - Dialog Orchestrator
 
 Central AI pipeline manager that coordinates the full interaction cycle:
 STT (speech-to-text) → LLM (language model) → TTS (text-to-speech).
 Maintains conversation history, dispatches actions to connected XR
 clients, and manages provider hot-swapping at runtime.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -396,7 +396,7 @@ class DialogOrchestrator:
             logger.error("TTS Streaming failed", error=str(e))
 
     async def process_direct_tts(self, text: str, target_device: str, target_agent: str):
-        """Bypasses the LLM — sends researcher-typed text directly to TTS and broadcasts it.
+        """Bypasses the LLM - sends researcher-typed text directly to TTS and broadcasts it.
         The VR user experiences this identically to an LLM-generated response."""
         try:
             std_log.info(f"🎤 Orchestrator: Direct TTS | text=\"{text[:80]}\" | target={target_device}")

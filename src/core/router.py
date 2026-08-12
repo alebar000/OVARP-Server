@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Command Router
+Open Virtual Agent Research Platform (OVARP) - Command Router
 
 Receives raw JSON messages from all transports, validates them against
 the experiment schema, logs them via the telemetry module, and dispatches
 them to the appropriate handler (orchestrator for AI interactions, or
 broadcast for direct commands). Acts as the central message bus.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

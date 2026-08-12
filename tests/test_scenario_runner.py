@@ -1,5 +1,5 @@
 ﻿"""
-Tests for ScenarioRunner — loading, starting, advancing, and stopping scenarios.
+Tests for ScenarioRunner - loading, starting, advancing, and stopping scenarios.
 """
 import os
 import pytest
@@ -90,7 +90,7 @@ def test_advance_scenario(reset_scenario_runner, scenario_dir):
     assert step.id == "step3"
     assert step.action == {"emotions": "happy"}
 
-    # Advance past the end — should complete
+    # Advance past the end - should complete
     step = runner.advance()
     assert step is None
     assert not runner.is_active

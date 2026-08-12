@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Command Schemas
+Open Virtual Agent Research Platform (OVARP) - Command Schemas
 
 Defines the ``BaseCommand`` Pydantic model that is the universal message
 structure flowing through ZMQ and WebSocket transports. Commands are
 validated dynamically against the current experiment configuration loaded
 from ``config.yaml``.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

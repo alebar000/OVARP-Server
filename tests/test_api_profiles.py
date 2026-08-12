@@ -1,4 +1,4 @@
-﻿"""
+"""
 Integration tests for the Agent Profiles REST API endpoints.
 
 Covers:
@@ -166,3 +166,19 @@ class TestGetAgentState:
         data = resp.json()
         assert data["agent_id"] == "agent_alpha"
         setup_app["orchestrator"].get_agent_info.assert_called_with("agent_alpha")
+
+
+class TestDeleteProfile:
+    def test_delete_existing_profile(self, client, setup_app):
+        resp = client.delete("/api/profiles/companion")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["profile_id"] == "companion"
+        assert setup_app["mgr"].get_profile("companion") is None
+
+    def test_delete_nonexistent_profile(self, client):
+        resp = client.delete("/api/profiles/nonexistent_xyz")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "error" in data

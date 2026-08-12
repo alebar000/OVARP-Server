@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Application Entry Point
+Open Virtual Agent Research Platform (OVARP) - Application Entry Point
 
 FastAPI application that bootstraps the entire OVARP server:
 initializes transports (ZMQ + WebSocket), registers AI providers
@@ -7,7 +7,7 @@ initializes transports (ZMQ + WebSocket), registers AI providers
 REST/WebSocket endpoints for the Wizard-of-Oz console, LLM chat,
 telemetry export, and real-time system logs.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -15,13 +15,15 @@ import asyncio
 import os
 import json
 import logging
+from pathlib import Path
+from typing import Optional, Dict, Any, List
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
 # Load .env BEFORE anything tries to read API keys
 load_dotenv()
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from structlog import get_logger
@@ -38,6 +40,7 @@ from src.providers.openai_provider import OpenAISTTProvider, OpenAILLMProvider, 
 from src.providers.gemini_provider import GeminiLLMProvider, GeminiTTSProvider
 from pydantic import BaseModel
 
+
 logger = get_logger()
 
 # --- Backward-compat: accept legacy OAF_* env vars with deprecation warning ---
@@ -49,7 +52,7 @@ def _is_testing():
         return True
     return False
 
-# 1. Initialize Configuration (skip in test mode — tests mock the config)
+# 1. Initialize Configuration (skip in test mode - tests mock the config)
 if not _is_testing():
     config_manager.load_config()
 
@@ -109,7 +112,7 @@ if not _is_testing():
         lifespan=lifespan
     )
 else:
-    # Minimal app for testing — routes still get registered below
+    # Minimal app for testing - routes still get registered below
     app = FastAPI(title="OVARP Server (Test Mode)")
 
 # 4. HTTP and WebSocket Mounts
@@ -206,7 +209,7 @@ async def check_provider_health():
                 await asyncio.to_thread(client.models.list)
                 results[name] = "ok"
             else:
-                # Custom / third-party providers — test via their base_url
+                # Custom / third-party providers - test via their base_url
                 provider = orchestrator.llm_providers[name]
                 if hasattr(provider, 'base_url'):
                     from src.providers.custom_provider import test_custom_endpoint
@@ -376,10 +379,6 @@ from src.core.session_manager import session_manager
 class SessionStartRequest(BaseModel):
     participant_id: str
 
-class MarkerRequest(BaseModel):
-    label: str
-    metadata: dict | None = None
-
 @app.get("/api/session/status")
 async def get_session_status():
     """Returns the current experiment session state"""
@@ -428,15 +427,44 @@ async def end_session():
     except ValueError as e:
         return {"error": str(e)}
 
+class MarkerRequest(BaseModel):
+
+    label: str
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    metadata: Optional[dict] = None
+
 @app.post("/api/session/marker")
 async def add_marker(req: MarkerRequest):
     """Add an event marker to the active session"""
     try:
-        marker = session_manager.add_marker(req.label, req.metadata)
-        telemetry.log_marker(req.label, req.metadata)
+        marker = session_manager.add_marker(req.label, req.metadata, category=req.category, notes=req.notes)
+        telemetry.log_marker(req.label, req.metadata, marker_id=marker.id, category=req.category, notes=req.notes)
         return {"status": "ok", "marker": marker.model_dump()}
     except ValueError as e:
         return {"error": str(e)}
+
+class MarkerUpdateRequest(BaseModel):
+    label: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    metadata: Optional[dict] = None
+
+@app.put("/api/session/markers/{marker_id}")
+async def update_marker_endpoint(marker_id: str, req: MarkerUpdateRequest):
+    """Update an event marker's category, notes, label, or metadata."""
+    try:
+        updated = session_manager.update_marker(
+            marker_id,
+            category=req.category,
+            notes=req.notes,
+            label=req.label,
+            metadata=req.metadata
+        )
+        telemetry.log_marker_update(marker_id, req.model_dump(exclude_none=True))
+        return {"status": "ok", "marker": updated.model_dump()}
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
 @app.get("/api/session/markers/presets")
 async def get_marker_presets():
@@ -445,6 +473,255 @@ async def get_marker_presets():
     if config.event_markers:
         return {"presets": [m.model_dump() for m in config.event_markers]}
     return {"presets": []}
+
+@app.post("/api/session/markers/presets")
+async def add_or_update_marker_preset(data: dict):
+    """Add or update an event marker preset in config memory"""
+    from src.core.config import EventMarkerPreset
+    try:
+        preset_id = data.get("id") or f"marker_{int(time.time())}"
+        label = data.get("label") or "Custom Marker"
+        description = data.get("description") or ""
+        color = data.get("color") or "#4f46e5"
+        
+        new_preset = EventMarkerPreset(
+            id=preset_id,
+            label=label,
+            description=description,
+            color=color
+        )
+        
+        config = config_manager.config
+        if config.event_markers is None:
+            config.event_markers = []
+            
+        existing_idx = next((i for i, m in enumerate(config.event_markers) if m.id == preset_id), None)
+        if existing_idx is not None:
+            config.event_markers[existing_idx] = new_preset
+        else:
+            config.event_markers.append(new_preset)
+            
+        return {"status": "ok", "presets": [m.model_dump() for m in config.event_markers]}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+@app.get("/api/session/export/csv")
+async def export_session_csv():
+    """Export active or completed session markers and telemetry events as CSV."""
+    import csv
+    import io
+    from datetime import datetime
+    from fastapi.responses import Response
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Timestamp_ISO", "Unix_Timestamp", "Session_ID", "Participant_ID", "Event_Type", "Category_or_Label", "Notes"])
+
+    sess = session_manager.session
+    if sess:
+        writer.writerow([sess.started_at, sess.started_at_unix, sess.session_id, sess.participant_id, "SESSION_START", "ACTIVE", f"Status: {sess.status}"])
+        for m in sess.markers:
+            writer.writerow([m.iso_time, m.timestamp, sess.session_id, sess.participant_id, "MARKER", m.category or m.label, m.notes or ""])
+    else:
+        writer.writerow([datetime.now().isoformat(), time.time(), "N/A", "N/A", "INFO", "NO_ACTIVE_SESSION", "No session markers recorded yet"])
+
+    csv_content = output.getvalue()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=ovarp_session_telemetry.csv"}
+    )
+
+
+
+# --- API Key Store & Persistence ---
+from src.providers.openai_provider import OpenAIClientSingleton
+from src.providers.gemini_provider import GeminiClientSingleton
+
+ENV_KEY_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "elevenlabs": "ELEVENLABS_API_KEY",
+    "OPENAI_API_KEY": "OPENAI_API_KEY",
+    "GEMINI_API_KEY": "GEMINI_API_KEY",
+    "ELEVENLABS_API_KEY": "ELEVENLABS_API_KEY",
+}
+
+def _get_env_file_path() -> Path:
+    return Path(".env")
+
+def _read_env_file_keys() -> dict:
+    env_path = _get_env_file_path()
+    if not env_path.exists():
+        return {}
+    keys = {}
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line_str = line.strip()
+            if line_str and not line_str.startswith("#") and "=" in line_str:
+                k, v = line_str.split("=", 1)
+                keys[k.strip()] = v.strip().strip("'\"")
+    return keys
+
+def _build_key_status_item(key_name: str) -> dict:
+    mem_val = os.getenv(key_name)
+    env_file_keys = _read_env_file_keys()
+    file_val = env_file_keys.get(key_name)
+
+    is_set = bool(mem_val)
+    persisted_in_env = bool(mem_val and file_val and mem_val == file_val)
+
+    if is_set and persisted_in_env:
+        badge = "[SAVED IN .ENV]"
+        state = "persisted"
+    elif is_set:
+        badge = "[IN MEMORY ONLY]"
+        state = "memory_only"
+    else:
+        badge = "[NOT CONFIGURED]"
+        state = "unconfigured"
+
+    masked = ""
+    if mem_val:
+        if len(mem_val) > 8:
+            masked = mem_val[:4] + "..." + mem_val[-4:]
+        else:
+            masked = "***"
+
+    return {
+        "key_name": key_name,
+        "is_set": is_set,
+        "masked_key": masked,
+        "persisted": persisted_in_env,
+        "persisted_in_env": persisted_in_env,
+        "badge": badge,
+        "storage_badge": badge,
+        "storage_state": state,
+    }
+
+def _persist_to_env_file(key_updates: dict):
+    env_path = _get_env_file_path()
+    lines = []
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    updated_keys = set()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k, _ = stripped.split("=", 1)
+            k = k.strip()
+            if k in key_updates:
+                new_lines.append(f"{k}={key_updates[k]}\n")
+                updated_keys.add(k)
+                continue
+        new_lines.append(line)
+
+    for k, v in key_updates.items():
+        if k not in updated_keys:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append(f"{k}={v}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+class KeyUpdateRequest(BaseModel):
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    keys: Optional[Dict[str, str]] = None
+    persist: Optional[bool] = False
+
+class KeyPersistRequest(BaseModel):
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    keys: Optional[Dict[str, str]] = None
+
+@app.get("/api/keys/status")
+async def get_keys_status():
+    """Returns storage status and badges for all configured API keys."""
+    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
+    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
+    return {"status": "ok", "keys": statuses}
+
+@app.post("/api/keys/update")
+async def update_api_keys(req: KeyUpdateRequest):
+    """Updates API keys in memory, optionally persists to .env, and resets singletons."""
+    updates = {}
+    if req.provider and req.api_key:
+        env_key = ENV_KEY_MAP.get(req.provider, req.provider)
+        updates[env_key] = req.api_key
+    if req.keys:
+        for k, v in req.keys.items():
+            env_key = ENV_KEY_MAP.get(k, k)
+            updates[env_key] = v
+
+    for env_key, val in updates.items():
+        os.environ[env_key] = val
+
+    # Reset singletons
+    OpenAIClientSingleton.reset_client()
+    GeminiClientSingleton.reset_client()
+
+    if req.persist and updates:
+        _persist_to_env_file(updates)
+
+    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
+    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
+
+    badge = "[IN MEMORY ONLY]"
+    if req.persist:
+        badge = "[SAVED IN .ENV]"
+    elif updates:
+        first_key = list(updates.keys())[0]
+        badge = statuses.get(first_key, {}).get("badge", badge)
+
+    return {
+        "status": "ok",
+        "badge": badge,
+        "storage_badge": badge,
+        "keys": statuses,
+    }
+
+@app.post("/api/keys/persist")
+async def persist_api_keys(req: KeyPersistRequest):
+    """Persists current in-memory API keys (or provided keys) to .env line-by-line."""
+    updates = {}
+    if req.provider and req.api_key:
+        env_key = ENV_KEY_MAP.get(req.provider, req.provider)
+        updates[env_key] = req.api_key
+        os.environ[env_key] = req.api_key
+    if req.keys:
+        for k, v in req.keys.items():
+            env_key = ENV_KEY_MAP.get(k, k)
+            updates[env_key] = v
+            os.environ[env_key] = v
+
+    if not updates:
+        for key_name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]:
+            val = os.getenv(key_name)
+            if val:
+                updates[key_name] = val
+
+    if updates:
+        _persist_to_env_file(updates)
+
+    # Reset singletons
+    OpenAIClientSingleton.reset_client()
+    GeminiClientSingleton.reset_client()
+
+    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
+    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
+
+    return {
+        "status": "ok",
+        "badge": "[SAVED IN .ENV]",
+        "storage_badge": "[SAVED IN .ENV]",
+        "keys": statuses,
+    }
+
 
 # --- Agent Profiles ---
 from src.core.profile_manager import profile_manager
@@ -475,7 +752,7 @@ class ProfileApplyRequest(BaseModel):
 
 @app.post("/api/profiles/apply")
 async def apply_profile(req: ProfileApplyRequest):
-    """Apply an agent profile — sets system prompt, voice, and avatar for the target agent."""
+    """Apply an agent profile: sets system prompt, voice, and avatar for the target agent."""
     profile = profile_manager.get_profile(req.profile_id)
     if not profile:
         return {"error": f"Profile '{req.profile_id}' not found"}
@@ -538,6 +815,17 @@ async def create_profile(req: ProfileCreateRequest):
     except Exception as e:
         return {"error": str(e)}
 
+@app.delete("/api/profiles/{profile_id}")
+async def delete_profile(profile_id: str):
+    """Delete an agent profile by ID."""
+    success = profile_manager.delete_profile(profile_id)
+    if not success:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Profile '{profile_id}' not found"}
+        )
+    return {"status": "success", "profile_id": profile_id}
+
 @app.get("/api/agents/{agent_id}")
 async def get_agent_state(agent_id: str):
     """Returns the current profile and state for a specific agent."""
@@ -591,6 +879,39 @@ async def list_scenarios():
     """List all available experiment scenarios."""
     return {"scenarios": scenario_runner.list_scenarios()}
 
+@app.post("/api/scenarios")
+async def create_scenario(data: dict):
+    """Create a new experiment scenario and persist it to scenarios/<scenario_id>.yaml"""
+    from src.core.scenario_runner import Scenario, ScenarioStep
+    try:
+        scenario_id = data.get("id") or f"scenario_{int(time.time())}"
+        name = data.get("name") or "New Custom Scenario"
+        description = data.get("description") or ""
+        raw_steps = data.get("steps") or []
+        
+        steps = []
+        for i, s in enumerate(raw_steps):
+            step_id = s.get("id") or f"step_{i+1}"
+            instruction = s.get("instruction") or f"Step {i+1} instruction"
+            action = s.get("action")
+            condition = s.get("condition")
+            auto_marker = s.get("auto_marker")
+            duration_seconds = s.get("duration_seconds")
+            steps.append(ScenarioStep(
+                id=step_id,
+                instruction=instruction,
+                action=action,
+                condition=condition,
+                auto_marker=auto_marker,
+                duration_seconds=duration_seconds
+            ))
+            
+        new_scenario = Scenario(id=scenario_id, name=name, description=description, steps=steps)
+        scenario_runner.add_scenario(new_scenario, save_to_disk=True)
+        return {"status": "ok", "scenario": new_scenario.model_dump(), "scenarios": scenario_runner.list_scenarios()}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
 @app.post("/api/scenarios/load")
 async def load_scenario(req: ScenarioLoadRequest):
     """Load and start a scenario from step 1."""
@@ -635,7 +956,7 @@ async def _execute_step_side_effects(step):
             session_manager.add_marker(step.auto_marker, {"source": "scenario"})
             telemetry.log_marker(step.auto_marker, {"source": "scenario"})
         except ValueError:
-            pass  # No active session — skip marker
+            pass  # No active session: skip marker
 
     # Auto-apply condition
     if step.condition:
@@ -763,15 +1084,23 @@ if _headless_legacy and not _headless_new:
     logging.getLogger("OVARP").warning("⚠️  OAF_HEADLESS is deprecated, use OVARP_HEADLESS instead.")
 headless_mode = _headless_new or _headless_legacy
 
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
 if os.path.exists(static_path):
     if headless_mode:
         logger.info("Starting in HEADLESS mode. Full WoZ console & 3D Avatar are disabled.")
         @app.get("/")
         async def serve_headless():
             return FileResponse(os.path.join(static_path, "headless.html"))
-        app.mount("/", StaticFiles(directory=static_path, html=False), name="static")
+        app.mount("/", NoCacheStaticFiles(directory=static_path, html=False), name="static")
     else:
         # Default Mode: Serve the full UI at root
-        app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
+        app.mount("/", NoCacheStaticFiles(directory=static_path, html=True), name="static")
 else:
     logger.warning("Static directory not found. UI will not be available.", path=static_path)

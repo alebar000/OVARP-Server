@@ -1,11 +1,11 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Schema Validation Tests
+Open Virtual Agent Research Platform (OVARP) - Schema Validation Tests
 
 Unit tests for ``BaseCommand`` Pydantic schema validation. Verifies
 that valid commands are parsed correctly, unregistered devices are
 rejected, and invalid custom action values raise ``ValidationError``.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

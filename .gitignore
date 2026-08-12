@@ -221,3 +221,5 @@ custom_providers.yaml
 # Anonymization artifacts (do not include in anonymous repo)
 scripts/anonymize_for_review.ps1
 pytest*.log
+.agents/
+data/evaluations/

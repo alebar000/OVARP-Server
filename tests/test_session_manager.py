@@ -1,5 +1,5 @@
 """
-Tests for the SessionManager — session lifecycle and event markers.
+Tests for the SessionManager - session lifecycle and event markers.
 """
 
 import time
@@ -110,7 +110,7 @@ def test_start_ends_existing_session(fresh_manager):
     fresh_manager.start_session("P007")
     fresh_manager.add_marker("old_marker")
 
-    # Start a new session — should end the previous
+    # Start a new session - should end the previous
     session = fresh_manager.start_session("P008")
     assert session.participant_id == "P008"
     assert len(session.markers) == 0  # fresh session has no markers

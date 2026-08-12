@@ -84,7 +84,7 @@ class TestApplyCondition:
         setup_app["orchestrator"].apply_profile.assert_called()
 
     def test_apply_condition_without_prefix(self, client, setup_app):
-        """Apply using just 'empathetic' — auto-resolves to 'condition_empathetic'."""
+        """Apply using just 'empathetic' - auto-resolves to 'condition_empathetic'."""
         resp = client.post("/api/conditions/apply", json={
             "condition_id": "empathetic",
         })

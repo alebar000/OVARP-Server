@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Mock XR Client
+Open Virtual Agent Research Platform (OVARP) - Mock XR Client
 
 Development utility that simulates a Unity/Unreal XR client connecting
 to the OVARP server via ZeroMQ. Sends periodic telemetry messages and
 listens for server commands. Useful for testing the ZMQ transport
 pipeline without a real XR headset.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

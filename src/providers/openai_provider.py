@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) — OpenAI Provider
+Open Virtual Agent Research Platform (OVARP) - OpenAI Provider
 
 Implements STT, LLM, and TTS providers using the OpenAI API:
 - ``OpenAISTTProvider``: Whisper-based speech-to-text transcription.
@@ -7,7 +7,7 @@ Implements STT, LLM, and TTS providers using the OpenAI API:
   for agent actions (emotions, gestures, gaze).
 - ``OpenAITTSProvider``: Text-to-speech synthesis using the ``tts-1`` model.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -41,6 +41,12 @@ class OpenAIClientSingleton:
             else:
                 cls._client = AsyncOpenAI(api_key=api_key)
         return cls._client
+
+    @classmethod
+    def reset_client(cls):
+        """Reset cached AsyncOpenAI client instance so new API key takes effect."""
+        cls._client = None
+
 
 class OpenAISTTProvider(BaseSTTProvider):
     """Whisper transcription provider."""

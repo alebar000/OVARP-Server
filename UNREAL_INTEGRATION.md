@@ -210,7 +210,7 @@ void AOVARPWebSocket::OnConnected()
 
 void AOVARPWebSocket::OnConnectionError(const FString& Error)
 {
-    UE_LOG(LogTemp, Error, TEXT("OVARP: Connection error — %s"), *Error);
+    UE_LOG(LogTemp, Error, TEXT("OVARP: Connection error - %s"), *Error);
 }
 
 void AOVARPWebSocket::OnClosed(int32 StatusCode, const FString& Reason, bool bWasClean)
@@ -279,7 +279,7 @@ void AOVARPWebSocket::SendCommand(const FString& CommandType, const FString& Com
 {
     if (!WebSocket.IsValid() || !WebSocket->IsConnected())
     {
-        UE_LOG(LogTemp, Warning, TEXT("OVARP: Cannot send — not connected"));
+        UE_LOG(LogTemp, Warning, TEXT("OVARP: Cannot send - not connected"));
         return;
     }
 

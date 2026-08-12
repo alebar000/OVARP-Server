@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Google Gemini Provider
+Open Virtual Agent Research Platform (OVARP) - Google Gemini Provider
 
 Implements LLM and TTS providers using the Google ``genai`` SDK:
 - ``GeminiLLMProvider``: Gemini chat completions with function calling for
@@ -7,7 +7,7 @@ Implements LLM and TTS providers using the Google ``genai`` SDK:
 - ``GeminiTTSProvider``: Text-to-speech synthesis using ``gemini-2.5-flash-tts``
   with configurable voice presets via the ``generate_content`` API.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -51,6 +51,12 @@ class GeminiClientSingleton:
                 return None
 
         return cls._client
+
+    @classmethod
+    def reset_client(cls):
+        """Reset cached Gemini client instance so new API key takes effect."""
+        cls._client = None
+
 
 class GeminiLLMProvider(BaseLLMProvider):
     """Google Gemini Language Model utilizing Native Tool Calling for configuration actions."""

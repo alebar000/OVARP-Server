@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — WebSocket Transport
+Open Virtual Agent Research Platform (OVARP) - WebSocket Transport
 
 Bidirectional transport layer for web-based clients using FastAPI's
 WebSocket support. Manages connection lifecycle, broadcasts outbound
 messages to all connected clients, and dispatches inbound messages
 to registered framework callbacks.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

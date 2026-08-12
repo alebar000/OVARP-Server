@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Profile Manager
+Open Virtual Agent Research Platform (OVARP) - Profile Manager
 
 Manages Agent Profiles: rich persona definitions that bundle identity,
 voice, personality, guardrails, and avatar into a single switchable unit.
@@ -7,10 +7,10 @@ Profiles are loaded from YAML files in the ``profiles/`` directory and
 can also be created at runtime via the API.
 
 When a profile is applied to an agent, the system prompt is auto-composed
-from all persona fields — backstory, guardrails, and personality traits
+from all persona fields - backstory, guardrails, and personality traits
 are woven into the final LLM prompt automatically.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -28,7 +28,7 @@ std_log = logging.getLogger("OVARP.profiles")
 # ---------------------------------------------------------------------------
 
 class ProfileIdentity(BaseModel):
-    """Who the agent is — demographics and backstory."""
+    """Who the agent is - demographics and backstory."""
     age: Optional[int] = None
     gender: Optional[str] = None          # "masculine", "feminine", "neutral"
     role: Optional[str] = None            # e.g. "Virtual therapist"
@@ -41,7 +41,7 @@ class ProfileVoice(BaseModel):
     speed: float = 1.0                    # 0.5 = slow, 2.0 = fast
 
 class ProfilePersonality(BaseModel):
-    """How the agent behaves — the prompt and trait knobs."""
+    """How the agent behaves - the prompt and trait knobs."""
     system_prompt: str
     self_disclosure: str = "medium"       # low, medium, high
     formality: str = "medium"
@@ -64,7 +64,7 @@ class AgentProfile(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Prompt composition — weaves all profile fields into a single LLM prompt
+# Prompt composition - weaves all profile fields into a single LLM prompt
 # ---------------------------------------------------------------------------
 
 def build_system_prompt(profile: AgentProfile) -> str:
@@ -72,7 +72,7 @@ def build_system_prompt(profile: AgentProfile) -> str:
     Compose a rich system prompt from all profile fields.
 
     The base system_prompt from personality is augmented with backstory,
-    self-disclosure instructions, formality cues, and guardrails — so
+    self-disclosure instructions, formality cues, and guardrails - so
     researchers don't have to do manual prompt engineering.
     """
     parts = []
@@ -120,10 +120,10 @@ def build_system_prompt(profile: AgentProfile) -> str:
                 "Reflect their feelings and validate them before responding."
             )
 
-    # Guardrails — hard rules
+    # Guardrails - hard rules
     if profile.guardrails and profile.guardrails.rules:
         rules_text = "\n".join(f"- {r}" for r in profile.guardrails.rules)
-        parts.append(f"\n[Guardrails — you MUST follow these rules]\n{rules_text}")
+        parts.append(f"\n[Guardrails - you MUST follow these rules]\n{rules_text}")
 
     if profile.guardrails and profile.guardrails.max_response_words:
         parts.append(
@@ -135,7 +135,7 @@ def build_system_prompt(profile: AgentProfile) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Profile Manager — loads, stores, and provides profiles
+# Profile Manager - loads, stores, and provides profiles
 # ---------------------------------------------------------------------------
 
 class ProfileManager:
@@ -151,11 +151,15 @@ class ProfileManager:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._profiles: dict[str, AgentProfile] = {}
+            cls._instance._loaded_dirs: set[Path] = set()
         return cls._instance
 
     def load_profiles(self, profiles_dir: str | Path = "profiles"):
         """Load all .yaml profile files from the given directory."""
         profiles_path = Path(profiles_dir)
+        if not hasattr(self, "_loaded_dirs"):
+            self._loaded_dirs = set()
+        self._loaded_dirs.add(profiles_path)
         if not profiles_path.exists():
             std_log.warning(f"Profiles directory not found: {profiles_path.absolute()}")
             return
@@ -199,6 +203,40 @@ class ProfileManager:
         std_log.info(f"📋 Profile created at runtime: {profile.id} ({profile.name})")
         return profile
 
+    def delete_profile(self, profile_id: str) -> bool:
+        """
+        Delete a profile by ID from memory and safely remove its YAML file if it exists on disk.
+
+        Returns True if deleted, False if not found.
+        """
+        if profile_id not in self._profiles:
+            return False
+
+        del self._profiles[profile_id]
+
+        candidate_paths = [
+            Path(f"profiles/{profile_id}.yaml"),
+            Path(f"profiles/{profile_id}.yml"),
+            Path(f"data/profiles/{profile_id}.yaml"),
+            Path(f"data/profiles/{profile_id}.yml"),
+        ]
+
+        loaded_dirs = getattr(self, "_loaded_dirs", set())
+        for d in loaded_dirs:
+            candidate_paths.append(Path(d) / f"{profile_id}.yaml")
+            candidate_paths.append(Path(d) / f"{profile_id}.yml")
+
+        for path in candidate_paths:
+            try:
+                if path.exists() and path.is_file():
+                    path.unlink()
+                    std_log.info(f"Deleted profile file: {path}")
+            except Exception as e:
+                std_log.error(f"Failed to delete profile file {path}: {e}")
+
+        std_log.info(f"Profile deleted: {profile_id}")
+        return True
+
     def get_composed_prompt(self, profile_id: str) -> Optional[str]:
         """Build the full system prompt for a profile."""
         profile = self.get_profile(profile_id)
@@ -211,7 +249,7 @@ class ProfileManager:
         Auto-migrate legacy 'conditions' from config.yaml into profiles.
 
         Each condition becomes a minimal profile with only personality,
-        voice, and avatar — preserving backwards compatibility while
+        voice, and avatar - preserving backwards compatibility while
         deprecating the conditions system.
         """
         if not conditions:
@@ -248,7 +286,7 @@ class ProfileManager:
         if migrated:
             std_log.info(
                 f"📋 Auto-migrated {migrated} legacy condition(s) to profiles "
-                f"(the 'conditions:' config section is deprecated — use profiles/ instead)"
+                f"(the 'conditions:' config section is deprecated - use profiles/ instead)"
             )
 
 

@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Transport Base Class
+Open Virtual Agent Research Platform (OVARP) - Transport Base Class
 
 Defines ``BaseTransport``, the abstract base class for all communication
 layers. Transports handle bidirectional message flow between the server
 and connected clients (XR headsets, web browsers, mobile apps).
 Supports callback registration for inbound message dispatching.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 

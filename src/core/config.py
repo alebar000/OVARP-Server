@@ -1,11 +1,11 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Configuration Manager
+Open Virtual Agent Research Platform (OVARP) - Configuration Manager
 
 Loads and validates the experiment configuration from ``config.yaml``.
 Defines Pydantic models for devices, agents, and custom command categories,
 and exposes a singleton ``ConfigManager`` for global access.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -32,7 +32,7 @@ class CustomCommandCategory(BaseModel):
     values: List[str]
 
 class ConditionConfig(BaseModel):
-    """An experimental condition preset — bundles a system prompt with avatar/voice."""
+    """An experimental condition preset - bundles a system prompt with avatar/voice."""
     description: str
     system_prompt: str
     avatar: Optional[str] = None

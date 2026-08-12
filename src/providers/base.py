@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) — Provider Base Classes
+Open Virtual Agent Research Platform (OVARP) - Provider Base Classes
 
 Defines abstract base classes for the three AI provider roles:
 ``BaseSTTProvider`` (speech-to-text), ``BaseLLMProvider`` (language model),
 and ``BaseTTSProvider`` (text-to-speech). All concrete providers must
 implement their respective interfaces.
 
-Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
 License: MIT
 """
 
