@@ -1136,40 +1136,40 @@
  </p>
 
  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-  <label class="form-label mb-0 font-weight-bold text-info">OpenAI API Key</label>
-  <span id="status-key-openai" class="badge bg-secondary">[NOT CONFIGURED]</span>
-  </div>
-  <div class="input-group">
-  <input type="password" id="key-openai" class="form-control" placeholder="sk-...">
-  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-openai')">Show / Hide</button>
-  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('openai')" title="Clear key from memory & .env">Clear Key</button>
-  </div>
-  </div>
+ <div class="d-flex justify-content-between align-items-center mb-2">
+ <label class="form-label mb-0 font-weight-bold text-info">OpenAI API Key</label>
+ <span id="status-key-openai" class="badge bg-secondary">[NOT CONFIGURED]</span>
+ </div>
+ <div class="input-group">
+ <input type="password" id="key-openai" class="form-control" placeholder="sk-...">
+ <button id="toggle-key-openai" class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-openai', 'openai', this)">Show</button>
+ <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('openai')" title="Clear key from memory & .env">Clear Key</button>
+ </div>
+ </div>
 
-  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-  <label class="form-label mb-0 font-weight-bold text-info">Gemini API Key</label>
-  <span id="status-key-gemini" class="badge bg-secondary">[NOT CONFIGURED]</span>
-  </div>
-  <div class="input-group">
-  <input type="password" id="key-gemini" class="form-control" placeholder="AIza...">
-  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-gemini')">Show / Hide</button>
-  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('gemini')" title="Clear key from memory & .env">Clear Key</button>
-  </div>
-  </div>
+ <div class="mb-4 p-3 bg-dark rounded border border-secondary">
+ <div class="d-flex justify-content-between align-items-center mb-2">
+ <label class="form-label mb-0 font-weight-bold text-info">Gemini API Key</label>
+ <span id="status-key-gemini" class="badge bg-secondary">[NOT CONFIGURED]</span>
+ </div>
+ <div class="input-group">
+ <input type="password" id="key-gemini" class="form-control" placeholder="AIza...">
+ <button id="toggle-key-gemini" class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-gemini', 'gemini', this)">Show</button>
+ <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('gemini')" title="Clear key from memory & .env">Clear Key</button>
+ </div>
+ </div>
 
-  <div class="mb-4 p-3 bg-dark rounded border border-secondary">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-  <label class="form-label mb-0 font-weight-bold text-info">ElevenLabs API Key</label>
-  <span id="status-key-elevenlabs" class="badge bg-secondary">[NOT CONFIGURED]</span>
-  </div>
-  <div class="input-group">
-  <input type="password" id="key-elevenlabs" class="form-control" placeholder="sk_...">
-  <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-elevenlabs')">Show / Hide</button>
-  <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('elevenlabs')" title="Clear key from memory & .env">Clear Key</button>
-  </div>
-  </div>
+ <div class="mb-4 p-3 bg-dark rounded border border-secondary">
+ <div class="d-flex justify-content-between align-items-center mb-2">
+ <label class="form-label mb-0 font-weight-bold text-info">ElevenLabs API Key</label>
+ <span id="status-key-elevenlabs" class="badge bg-secondary">[NOT CONFIGURED]</span>
+ </div>
+ <div class="input-group">
+ <input type="password" id="key-elevenlabs" class="form-control" placeholder="sk_...">
+ <button id="toggle-key-elevenlabs" class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility('key-elevenlabs', 'elevenlabs', this)">Show</button>
+ <button class="btn btn-outline-danger" type="button" onclick="clearKeyField('elevenlabs')" title="Clear key from memory & .env">Clear Key</button>
+ </div>
+ </div>
 
  <div class="d-flex gap-3 mt-4">
  <button id="btn-update-keys-memory" class="btn btn-warning flex-fill fw-bold" onclick="updateKeysInMemory()">
@@ -2774,34 +2774,58 @@
  }
  window.loadKeyStoreStatus = loadKeyStoreStatus;
 
- function updateKeyFieldStatus(provider, keyInfo) {
- const statusEl = document.getElementById(`status-key-${provider}`);
- const inputEl = document.getElementById(`key-${provider}`);
- if (!statusEl || !keyInfo) return;
+  let _keyStoreData = {};
 
- statusEl.textContent = keyInfo.badge;
- setKeyBadgeStyle(statusEl, keyInfo.badge);
+  function updateKeyFieldStatus(provider, keyInfo) {
+    const statusEl = document.getElementById(`status-key-${provider}`);
+    const inputEl = document.getElementById(`key-${provider}`);
+    const toggleBtn = document.getElementById(`toggle-key-${provider}`);
+    if (!statusEl || !keyInfo) return;
 
- if (inputEl && keyInfo.masked_key && !inputEl.value) {
- inputEl.placeholder = keyInfo.masked_key;
- }
- }
+    _keyStoreData[provider] = keyInfo;
 
- function setKeyBadgeStyle(el, badgeText) {
- if (badgeText.includes('[SAVED IN .ENV]')) {
- el.className = 'badge badge-emerald mono-font';
- } else if (badgeText.includes('[IN MEMORY ONLY')) {
- el.className = 'badge badge-amber mono-font';
- } else {
- el.className = 'badge badge-slate mono-font';
- }
- }
+    statusEl.textContent = keyInfo.badge;
+    setKeyBadgeStyle(statusEl, keyInfo.badge);
 
- window.toggleKeyVisibility = function(inputId) {
-  const input = document.getElementById(inputId);
-  if (input) {
-  input.type = input.type === 'password' ? 'text' : 'password';
+    if (inputEl && !inputEl.value) {
+      if (keyInfo.is_set) {
+        const isHidden = inputEl.type === 'password';
+        inputEl.placeholder = isHidden ? '••••••••••••••••••••' : (keyInfo.masked_key || 'sk-...');
+      } else {
+        inputEl.placeholder = provider === 'gemini' ? 'AIza...' : provider === 'openai' ? 'sk-...' : 'sk_...';
+      }
+    }
   }
+
+  function setKeyBadgeStyle(el, badgeText) {
+  if (badgeText.includes('[SAVED IN .ENV]')) {
+  el.className = 'badge badge-emerald mono-font';
+  } else if (badgeText.includes('[IN MEMORY ONLY')) {
+  el.className = 'badge badge-amber mono-font';
+  } else {
+  el.className = 'badge badge-slate mono-font';
+  }
+  }
+
+  window.toggleKeyVisibility = function(inputId, provider, btnEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const info = _keyStoreData[provider] || {};
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (btnEl) btnEl.textContent = 'Hide';
+      if (info.is_set && info.masked_key && !input.value) {
+        input.placeholder = info.masked_key;
+      }
+    } else {
+      input.type = 'password';
+      if (btnEl) btnEl.textContent = 'Show';
+      if (info.is_set && !input.value) {
+        input.placeholder = '••••••••••••••••••••';
+      }
+    }
   };
 
   window.clearKeyField = async function(provider) {
