@@ -1,1118 +1,187 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Application Entry Point
+Open Virtual Agent Research Platform (OVARP) — Application Entry Point
 
-FastAPI application that bootstraps the entire OVARP server:
-initializes transports (ZMQ + WebSocket), registers AI providers
-(OpenAI, Gemini), configures the dialog orchestrator, and exposes
-REST/WebSocket endpoints for the Wizard-of-Oz console, LLM chat,
-telemetry export, and real-time system logs.
+Bootstraps the server: loads the experiment configuration, starts the ZMQ and
+WebSocket transports, registers the AI providers, wires the dialog
+orchestrator into the runtime container, and mounts the API routers and the
+Wizard-of-Oz console.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Route handlers live in ``src/api/routers/``.
+
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
-import asyncio
 import os
-import time
-import json
-import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-from logging.handlers import RotatingFileHandler
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 
 # Load .env BEFORE anything tries to read API keys
 load_dotenv()
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
-from structlog import get_logger
 
-from src.core.config import config_manager
-from src.core.router import router
-from src.core.orchestrator import DialogOrchestrator
-from src.transport.zmq_layer import ZMQTransport
-from src.transport.ws_layer import WebSocketTransport
-from src.core.telemetry import telemetry
+from fastapi import Depends, FastAPI  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from structlog import get_logger  # noqa: E402
 
-# Using OpenAI as the default fully functional provider for the MVP
-from src.providers.openai_provider import OpenAISTTProvider, OpenAILLMProvider, OpenAITTSProvider
-from src.providers.gemini_provider import GeminiLLMProvider, GeminiTTSProvider
-from pydantic import BaseModel
-
+from src.api import websockets  # noqa: E402
+from src.api.deps import require_console_token  # noqa: E402
+from src.api.routers import (  # noqa: E402
+    auth,
+    keys,
+    llm,
+    profiles,
+    providers,
+    scenarios,
+    sessions,
+    surveys,
+    system,
+)
+from src.core import key_store  # noqa: E402
+from src.core.logging_setup import configure_logging  # noqa: E402
+from src.core.orchestrator import DialogOrchestrator  # noqa: E402
+from src.core.runtime import is_headless, is_testing, runtime  # noqa: E402
+from src.providers.gemini_provider import (  # noqa: E402
+    GeminiLLMProvider,
+    GeminiSTTProvider,
+    GeminiTTSProvider,
+)
+from src.providers.openai_provider import (  # noqa: E402
+    OpenAILLMProvider,
+    OpenAISTTProvider,
+    OpenAITTSProvider,
+)
+from src.transport.ws_layer import WebSocketTransport  # noqa: E402
+from src.transport.zmq_layer import ZMQTransport  # noqa: E402
 
 logger = get_logger()
 
-# --- Backward-compat: accept legacy OAF_* env vars with deprecation warning ---
-def _is_testing():
-    if os.getenv("OVARP_TESTING"):
-        return True
-    if os.getenv("OAF_TESTING"):
-        logging.getLogger("OVARP").warning("OAF_TESTING is deprecated, use OVARP_TESTING instead.")
-        return True
-    return False
+ZMQ_PUB_PORT = 5555
+ZMQ_SUB_PORT = 5556
 
-# 1. Initialize Configuration (skip in test mode - tests mock the config)
-if not _is_testing():
-    config_manager.load_config()
 
-    # 2. Setup Transports
-    zmq_transport = ZMQTransport(pub_port=5555, sub_port=5556)
-    ws_transport = WebSocketTransport()
+def _build_orchestrator() -> DialogOrchestrator:
+    """Assemble the dialog pipeline from the built-in providers.
 
-    # Bind both to the router so messages flow bidirectionally everywhere
-    router.add_transport(zmq_transport)
-    router.add_transport(ws_transport)
-
-    # 3. Setup AI Orchestrator
-    # (Requires API Keys in .env to function fully)
-    stt_provider = OpenAISTTProvider()
-    llm_providers = {
-        "openai": OpenAILLMProvider(),
-        "gemini": GeminiLLMProvider()
-    }
-    tts_provider = OpenAITTSProvider()
-    gemini_tts_provider = GeminiTTSProvider()
-
-    orchestrator = DialogOrchestrator(
-        stt_provider=stt_provider,
-        llm_providers=llm_providers,
-        tts_providers={
-            "openai": tts_provider,
-            "gemini": gemini_tts_provider
+    All three stages are registered per vendor and selected independently, so a
+    study can run transcription on one provider and speech on another.
+    """
+    return DialogOrchestrator(
+        stt_providers={
+            "openai": OpenAISTTProvider(),
+            "gemini": GeminiSTTProvider(),
         },
-        default_llm="gemini",
-        default_tts="gemini"
+        llm_providers={
+            "openai": OpenAILLMProvider(),
+            "gemini": GeminiLLMProvider(),
+        },
+        tts_providers={
+            "openai": OpenAITTSProvider(),
+            "gemini": GeminiTTSProvider(),
+        },
+        default_llm=os.getenv("OVARP_DEFAULT_LLM", "gemini"),
+        default_tts=os.getenv("OVARP_DEFAULT_TTS", "gemini"),
+        default_stt=os.getenv("OVARP_DEFAULT_STT", "gemini"),
     )
 
-    # Pipe the Router to the Orchestrator so audio commands trigger AI responses
-    router.set_orchestrator(orchestrator)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        """Lifecycle manager for FastAPI to start and stop background resources."""
-        logger.info("Starting OpenVirtualAgentResearchPlatform Server...", experiment=config_manager.config.experiment.name)
-        
-        # Start all registered transports
-        await zmq_transport.start()
-        await ws_transport.start()
-        
-        yield
-        
-        # Shutdown gracefully
-        await zmq_transport.stop()
-        await ws_transport.stop()
-        logger.info("OVARP Server fully stopped.")
+def _bootstrap():
+    """Load configuration and wire every collaborator into the runtime container."""
+    runtime.config_manager.load_config()
 
-    # 4. Initialize FastAPI App
+    runtime.zmq_transport = ZMQTransport(pub_port=ZMQ_PUB_PORT, sub_port=ZMQ_SUB_PORT)
+    runtime.ws_transport = WebSocketTransport()
+    runtime.router.add_transport(runtime.zmq_transport)
+    runtime.router.add_transport(runtime.ws_transport)
+
+    runtime.orchestrator = _build_orchestrator()
+    runtime.router.set_orchestrator(runtime.orchestrator)
+
+    runtime.profile_manager.load_profiles("profiles")
+    if runtime.config_manager.config.conditions:
+        runtime.profile_manager.migrate_conditions(runtime.config_manager.config.conditions)
+
+    runtime.scenario_runner.load_scenarios_from_dir("scenarios")
+    runtime.survey_manager.load_surveys_from_dir("surveys")
+
+    key_store.load_stored_keys()
+
+    from src.api.routers.providers import load_custom_providers
+    load_custom_providers()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Starts and stops the transports alongside the HTTP server."""
+    logger.info(
+        "Starting OVARP Server...",
+        experiment=runtime.config_manager.config.experiment.name,
+    )
+    await runtime.zmq_transport.start()
+    await runtime.ws_transport.start()
+
+    yield
+
+    await runtime.zmq_transport.stop()
+    await runtime.ws_transport.stop()
+    logger.info("OVARP Server fully stopped.")
+
+
+if is_testing():
+    # Minimal app — tests substitute the collaborators on the runtime container
+    app = FastAPI(title="OVARP Server (Test Mode)")
+else:
+    _bootstrap()
     app = FastAPI(
         title="OVARP Server (Wizard of Oz & Gateway)",
-        description="OpenVirtualAgentResearchPlatform Routing Server",
-        version=config_manager.config.experiment.version,
-        lifespan=lifespan
-    )
-else:
-    # Minimal app for testing - routes still get registered below
-    app = FastAPI(title="OVARP Server (Test Mode)")
-
-# 4. HTTP and WebSocket Mounts
-@app.get("/api/config")
-async def get_config():
-    """Returns the current loaded topology directly from config.yaml"""
-    return config_manager.config.model_dump()
-
-class LLMConfigUpdate(BaseModel):
-    provider_id: str | None = None
-    tts_provider_id: str | None = None
-    tts_voice: str | None = None
-    system_prompt: str | None = None
-
-@app.get("/api/llm/config")
-async def get_llm_config():
-    """Returns the current active LLM state"""
-    active_tts_obj = orchestrator.tts_providers.get(orchestrator.active_tts_id)
-    current_voice = getattr(active_tts_obj, 'voice', 'alloy') if active_tts_obj else 'alloy'
-    return {
-        "active_provider": orchestrator.active_llm_id,
-        "available_providers": list(orchestrator.llm_providers.keys()),
-        "active_tts_provider": orchestrator.active_tts_id,
-        "active_tts_voice": current_voice,
-        "available_tts_providers": list(orchestrator.tts_providers.keys()),
-        "system_prompt": orchestrator.system_prompt,
-        "tts_enabled": orchestrator.tts_enabled
-    }
-
-@app.post("/api/llm/config")
-async def set_llm_config(update: LLMConfigUpdate):
-    """Dynamically updates the Orchestrator without restarting"""
-    if update.provider_id:
-        orchestrator.set_active_llm(update.provider_id)
-    if update.tts_provider_id:
-        orchestrator.set_active_tts(update.tts_provider_id)
-    if update.tts_voice is not None and orchestrator.active_tts_id in orchestrator.tts_providers:
-        orchestrator.tts_providers[orchestrator.active_tts_id].voice = update.tts_voice
-    if update.system_prompt is not None:
-        orchestrator.set_system_prompt(update.system_prompt)
-        
-    active_tts_obj = orchestrator.tts_providers.get(orchestrator.active_tts_id)
-    current_voice = getattr(active_tts_obj, 'voice', 'alloy') if active_tts_obj else 'alloy'
-    return {
-        "active_provider": orchestrator.active_llm_id,
-        "active_tts_provider": orchestrator.active_tts_id,
-        "active_tts_voice": current_voice,
-        "system_prompt": orchestrator.system_prompt,
-        "tts_enabled": orchestrator.tts_enabled
-    }
-
-@app.post("/api/llm/tts")
-async def toggle_tts():
-    """Toggles TTS audio generation on/off"""
-    orchestrator.tts_enabled = not orchestrator.tts_enabled
-    return {"tts_enabled": orchestrator.tts_enabled}
-
-@app.get("/api/tts/voices")
-async def get_tts_voices():
-    """Returns available TTS voices for the active provider, including gender metadata."""
-    return orchestrator.get_tts_config()
-
-class TtsVoiceUpdate(BaseModel):
-    voice_id: str
-
-@app.post("/api/tts/voice")
-async def set_tts_voice(update: TtsVoiceUpdate):
-    """Switch the active TTS voice at runtime."""
-    orchestrator.set_tts_voice(update.voice_id)
-    return orchestrator.get_tts_config()
-
-class TtsProviderUpdate(BaseModel):
-    provider_id: str
-
-@app.post("/api/tts/provider")
-async def set_tts_provider(update: TtsProviderUpdate):
-    """Switch the TTS provider independently of the LLM provider."""
-    success = orchestrator.set_active_tts(update.provider_id)
-    if not success:
-        return {"error": f"Unknown TTS provider '{update.provider_id}'"}
-    return orchestrator.get_tts_config()
-
-@app.post("/api/llm/history/clear")
-async def clear_history():
-    """Clears the conversation memory"""
-    orchestrator.clear_history()
-    return {"status": "ok", "message": "Conversation history cleared"}
-
-@app.get("/api/health/providers")
-async def check_provider_health():
-    """Returns instant key-presence status for each registered provider.
-    
-    Uses environment variable presence rather than live API calls to avoid
-    10+ second latency that caused the UI to display stale error badges.
-    """
-    results = {}
-    key_env_map = {
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-    }
-    for name in orchestrator.llm_providers:
-        env_var = key_env_map.get(name)
-        if env_var:
-            key_val = os.getenv(env_var, "").strip()
-            results[name] = "ok" if key_val and key_val != "sk-dummy" else "error"
-        else:
-            # Custom provider: check if it has a base_url configured
-            provider = orchestrator.llm_providers[name]
-            results[name] = "ok" if hasattr(provider, 'base_url') and provider.base_url else "error"
-    return results
-
-@app.get("/api/export")
-async def export_telemetry():
-    """Exports the current session JSONL into a structured CSV file for analysis"""
-    csv_path = telemetry.export_to_csv()
-    if csv_path and csv_path.exists():
-        return FileResponse(path=csv_path, filename=csv_path.name, media_type='text/csv')
-    return {"error": "Failed to generate CSV export."}
-
-# --- Custom Provider Registration ---
-import yaml
-from pathlib import Path
-from src.providers.custom_provider import CustomLLMProvider, CustomTTSProvider, test_custom_endpoint
-
-CUSTOM_PROVIDERS_FILE = Path(__file__).resolve().parent.parent / "custom_providers.yaml"
-
-def _load_custom_providers():
-    """Load custom providers from YAML on boot."""
-    if not CUSTOM_PROVIDERS_FILE.exists():
-        return
-    try:
-        data = yaml.safe_load(CUSTOM_PROVIDERS_FILE.read_text(encoding="utf-8")) or {}
-        providers = data.get("providers", {})
-        for name, cfg in providers.items():
-            base_url = cfg.get("base_url", "")
-            api_key = cfg.get("api_key", "")
-            model = cfg.get("model", "")
-            types = cfg.get("types", [])
-            if "llm" in types:
-                orchestrator.register_provider(name, CustomLLMProvider(name, base_url, model, api_key), "llm")
-            if "tts" in types:
-                orchestrator.register_provider(name, CustomTTSProvider(name, base_url, model, api_key), "tts")
-        std_log = logging.getLogger("OVARP.custom")
-        std_log.info(f"Loaded {len(providers)} custom provider(s) from {CUSTOM_PROVIDERS_FILE.name}")
-    except Exception as e:
-        logging.getLogger("OVARP.custom").warning(f"Could not load custom providers: {e}")
-
-def _save_custom_providers(registry: dict):
-    """Persist the custom providers registry to YAML."""
-    CUSTOM_PROVIDERS_FILE.write_text(
-        yaml.dump({"providers": registry}, default_flow_style=False, sort_keys=False),
-        encoding="utf-8"
+        description="Open Virtual Agent Research Platform Routing Server",
+        version=runtime.config_manager.config.experiment.version,
+        lifespan=lifespan,
     )
 
-def _read_custom_registry() -> dict:
-    """Read the current registry from disk."""
-    if not CUSTOM_PROVIDERS_FILE.exists():
-        return {}
-    try:
-        data = yaml.safe_load(CUSTOM_PROVIDERS_FILE.read_text(encoding="utf-8")) or {}
-        return data.get("providers", {})
-    except Exception:
-        return {}
+# Reachable without a token so the console can ask for one when it needs to
+app.include_router(auth.router)
 
-# Load on boot (only outside test mode)
-if not _is_testing():
-    _load_custom_providers()
+# Participants answer questionnaires on their own device, with no token to carry
+app.include_router(surveys.router)
 
-class ProviderRegisterRequest(BaseModel):
-    name: str
-    base_url: str
-    api_key: str = ""
-    model: str
-    types: list[str]  # ["llm"], ["tts"], or ["llm", "tts"]
+# Everything a researcher can drive is behind the console token when one is set
+for api_router in (system.router, llm.router, providers.router, keys.router,
+                   sessions.router, profiles.router, scenarios.router):
+    app.include_router(api_router, dependencies=[Depends(require_console_token)])
 
-@app.get("/api/providers")
-async def list_providers():
-    """List all registered providers (built-in + custom)."""
-    custom = _read_custom_registry()
-    return {
-        "builtin": ["openai", "gemini"],
-        "custom": custom,
-        "available_llm": list(orchestrator.llm_providers.keys()),
-        "available_tts": list(orchestrator.tts_providers.keys()),
-        "active_llm": orchestrator.active_llm_id
-    }
+# XR clients authenticate by being a device declared in config.yaml, not by token
+app.include_router(websockets.router)
 
-@app.post("/api/providers/register")
-async def register_provider(req: ProviderRegisterRequest):
-    """Register a new custom OpenAI-compatible provider."""
-    name = req.name.strip().lower().replace(" ", "-")
-    if name in ("openai", "gemini"):
-        return {"error": "Cannot overwrite built-in providers."}
+configure_logging()
 
-    # Create and register provider instances
-    if "llm" in req.types:
-        provider = CustomLLMProvider(name, req.base_url, req.model, req.api_key)
-        orchestrator.register_provider(name, provider, "llm")
-    if "tts" in req.types:
-        provider = CustomTTSProvider(name, req.base_url, req.model, req.api_key)
-        orchestrator.register_provider(name, provider, "tts")
-
-    # Persist to YAML
-    registry = _read_custom_registry()
-    registry[name] = {
-        "base_url": req.base_url,
-        "api_key": req.api_key,
-        "model": req.model,
-        "types": req.types
-    }
-    _save_custom_providers(registry)
-
-    return {
-        "status": "ok",
-        "name": name,
-        "available_llm": list(orchestrator.llm_providers.keys()),
-        "available_tts": list(orchestrator.tts_providers.keys())
-    }
-
-@app.delete("/api/providers/{name}")
-async def unregister_provider_endpoint(name: str):
-    """Remove a custom provider."""
-    removed = orchestrator.unregister_provider(name)
-    if not removed:
-        return {"error": f"Provider '{name}' not found or is built-in."}
-
-    # Remove from YAML
-    registry = _read_custom_registry()
-    registry.pop(name, None)
-    _save_custom_providers(registry)
-
-    return {
-        "status": "ok",
-        "available_llm": list(orchestrator.llm_providers.keys()),
-        "available_tts": list(orchestrator.tts_providers.keys())
-    }
-
-@app.post("/api/providers/{name}/test")
-async def test_provider_endpoint(name: str):
-    """Test connectivity to a custom provider's base_url."""
-    registry = _read_custom_registry()
-    cfg = registry.get(name)
-    if not cfg:
-        return {"ok": False, "detail": f"Provider '{name}' not found in registry."}
-    result = await test_custom_endpoint(cfg["base_url"], cfg.get("api_key", ""), cfg.get("model", ""))
-    return result
-
-class ProviderTestRequest(BaseModel):
-    base_url: str
-    api_key: str = ""
-    model: str = ""
-
-@app.post("/api/providers/test")
-async def test_provider_url(req: ProviderTestRequest):
-    """Test connectivity to any OpenAI-compatible endpoint (before registering)."""
-    result = await test_custom_endpoint(req.base_url, req.api_key, req.model)
-    return result
-
-# --- Session Management ---
-from src.core.session_manager import session_manager
-
-class SessionStartRequest(BaseModel):
-    participant_id: str
-
-@app.get("/api/session/status")
-async def get_session_status():
-    """Returns the current experiment session state"""
-    return session_manager.get_status()
-
-@app.post("/api/session/start")
-async def start_session(req: SessionStartRequest):
-    """Start a new experiment session with a participant ID"""
-    session = session_manager.start_session(req.participant_id)
-    telemetry.log_session_event("started", {"participant_id": req.participant_id})
-    return session_manager.get_status()
-
-@app.post("/api/session/pause")
-async def pause_session():
-    """Pause the active experiment session"""
-    try:
-        session_manager.pause_session()
-        telemetry.log_session_event("paused")
-        return session_manager.get_status()
-    except ValueError as e:
-        return {"error": str(e)}
-
-@app.post("/api/session/resume")
-async def resume_session():
-    """Resume a paused experiment session"""
-    try:
-        session_manager.resume_session()
-        telemetry.log_session_event("resumed")
-        return session_manager.get_status()
-    except ValueError as e:
-        return {"error": str(e)}
-
-@app.post("/api/session/end")
-async def end_session():
-    """End the active session and return the final session data"""
-    try:
-        completed = session_manager.end_session()
-        telemetry.log_session_event("ended", {
-            "participant_id": completed.participant_id,
-            "marker_count": len(completed.markers),
-        })
-        return {
-            "status": "completed",
-            "session": completed.model_dump(),
-        }
-    except ValueError as e:
-        return {"error": str(e)}
-
-class MarkerRequest(BaseModel):
-
-    label: str
-    category: Optional[str] = None
-    notes: Optional[str] = None
-    metadata: Optional[dict] = None
-
-@app.post("/api/session/marker")
-async def add_marker(req: MarkerRequest):
-    """Add an event marker to the active session"""
-    try:
-        marker = session_manager.add_marker(req.label, req.metadata, category=req.category, notes=req.notes)
-        telemetry.log_marker(req.label, req.metadata, marker_id=marker.id, category=req.category, notes=req.notes)
-        return {"status": "ok", "marker": marker.model_dump()}
-    except ValueError as e:
-        return {"error": str(e)}
-
-class MarkerUpdateRequest(BaseModel):
-    label: Optional[str] = None
-    category: Optional[str] = None
-    notes: Optional[str] = None
-    metadata: Optional[dict] = None
-
-@app.put("/api/session/markers/{marker_id}")
-async def update_marker_endpoint(marker_id: str, req: MarkerUpdateRequest):
-    """Update an event marker's category, notes, label, or metadata."""
-    try:
-        updated = session_manager.update_marker(
-            marker_id,
-            category=req.category,
-            notes=req.notes,
-            label=req.label,
-            metadata=req.metadata
-        )
-        telemetry.log_marker_update(marker_id, req.model_dump(exclude_none=True))
-        return {"status": "ok", "marker": updated.model_dump()}
-    except ValueError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-
-@app.get("/api/session/markers/presets")
-async def get_marker_presets():
-    """Returns the pre-programmed event marker presets from config.yaml"""
-    config = config_manager.config
-    if config.event_markers:
-        return {"presets": [m.model_dump() for m in config.event_markers]}
-    return {"presets": []}
-
-@app.post("/api/session/markers/presets")
-async def add_or_update_marker_preset(data: dict):
-    """Add or update an event marker preset in config memory"""
-    from src.core.config import EventMarkerPreset
-    try:
-        preset_id = data.get("id") or f"marker_{int(time.time())}"
-        label = data.get("label") or "Custom Marker"
-        description = data.get("description") or ""
-        color = data.get("color") or "#4f46e5"
-        
-        new_preset = EventMarkerPreset(
-            id=preset_id,
-            label=label,
-            description=description,
-            color=color
-        )
-        
-        config = config_manager.config
-        if config.event_markers is None:
-            config.event_markers = []
-            
-        existing_idx = next((i for i, m in enumerate(config.event_markers) if m.id == preset_id), None)
-        if existing_idx is not None:
-            config.event_markers[existing_idx] = new_preset
-        else:
-            config.event_markers.append(new_preset)
-            
-        return {"status": "ok", "presets": [m.model_dump() for m in config.event_markers]}
-    except Exception as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-
-@app.get("/api/session/export/csv")
-async def export_session_csv():
-    """Export active or completed session markers and telemetry events as CSV."""
-    import csv
-    import io
-    from datetime import datetime
-    from fastapi.responses import Response
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Timestamp_ISO", "Unix_Timestamp", "Session_ID", "Participant_ID", "Event_Type", "Category_or_Label", "Notes"])
-
-    sess = session_manager.session
-    if sess:
-        writer.writerow([sess.started_at, sess.started_at_unix, sess.session_id, sess.participant_id, "SESSION_START", "ACTIVE", f"Status: {sess.status}"])
-        for m in sess.markers:
-            writer.writerow([m.iso_time, m.timestamp, sess.session_id, sess.participant_id, "MARKER", m.category or m.label, m.notes or ""])
-    else:
-        writer.writerow([datetime.now().isoformat(), time.time(), "N/A", "N/A", "INFO", "NO_ACTIVE_SESSION", "No session markers recorded yet"])
-
-    csv_content = output.getvalue()
-    return Response(
-        content=csv_content,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=ovarp_session_telemetry.csv"}
-    )
-
-
-
-# --- API Key Store & Persistence ---
-from src.providers.openai_provider import OpenAIClientSingleton
-from src.providers.gemini_provider import GeminiClientSingleton
-
-ENV_KEY_MAP = {
-    "openai": "OPENAI_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-    "elevenlabs": "ELEVENLABS_API_KEY",
-    "OPENAI_API_KEY": "OPENAI_API_KEY",
-    "GEMINI_API_KEY": "GEMINI_API_KEY",
-    "ELEVENLABS_API_KEY": "ELEVENLABS_API_KEY",
-}
-
-def _get_env_file_path() -> Path:
-    return Path(".env")
-
-def _read_env_file_keys() -> dict:
-    env_path = _get_env_file_path()
-    if not env_path.exists():
-        return {}
-    keys = {}
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line_str = line.strip()
-            if line_str and not line_str.startswith("#") and "=" in line_str:
-                k, v = line_str.split("=", 1)
-                keys[k.strip()] = v.strip().strip("'\"")
-    return keys
-
-def _build_key_status_item(key_name: str) -> dict:
-    mem_val = os.getenv(key_name)
-    env_file_keys = _read_env_file_keys()
-    file_val = env_file_keys.get(key_name)
-
-    is_set = bool(mem_val)
-    persisted_in_env = bool(mem_val and file_val and mem_val == file_val)
-
-    if is_set and persisted_in_env:
-        badge = "[SAVED IN .ENV]"
-        state = "persisted"
-    elif is_set:
-        badge = "[IN MEMORY ONLY]"
-        state = "memory_only"
-    else:
-        badge = "[NOT CONFIGURED]"
-        state = "unconfigured"
-
-    masked = ""
-    if mem_val:
-        if len(mem_val) > 8:
-            masked = mem_val[:4] + "..." + mem_val[-4:]
-        else:
-            masked = "***"
-
-    return {
-        "key_name": key_name,
-        "is_set": is_set,
-        "masked_key": masked,
-        "full_key": mem_val if mem_val else "",
-        "persisted": persisted_in_env,
-        "persisted_in_env": persisted_in_env,
-        "badge": badge,
-        "storage_badge": badge,
-        "storage_state": state,
-    }
-
-def _persist_to_env_file(key_updates: dict):
-    env_path = _get_env_file_path()
-    lines = []
-    if env_path.exists():
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-    updated_keys = set()
-    new_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#") and "=" in stripped:
-            k, _ = stripped.split("=", 1)
-            k = k.strip()
-            if k in key_updates:
-                val = key_updates[k]
-                if val:
-                    new_lines.append(f"{k}={val}\n")
-                # If val is empty, skip writing to delete the line from .env
-                updated_keys.add(k)
-                continue
-        new_lines.append(line)
-
-    for k, v in key_updates.items():
-        if k not in updated_keys and v:
-            if new_lines and not new_lines[-1].endswith("\n"):
-                new_lines.append("\n")
-            new_lines.append(f"{k}={v}\n")
-
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
-
-class KeyUpdateRequest(BaseModel):
-    provider: Optional[str] = None
-    api_key: Optional[str] = None
-    keys: Optional[Dict[str, str]] = None
-    persist: Optional[bool] = False
-
-class KeyPersistRequest(BaseModel):
-    provider: Optional[str] = None
-    api_key: Optional[str] = None
-    keys: Optional[Dict[str, str]] = None
-
-@app.get("/api/keys/status")
-async def get_keys_status():
-    """Returns storage status and badges for all configured API keys."""
-    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
-    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
-    return {"status": "ok", "keys": statuses}
-
-@app.post("/api/keys/update")
-async def update_api_keys(req: KeyUpdateRequest):
-    """Updates API keys in memory, optionally persists to .env, and resets singletons."""
-    updates = {}
-    if req.provider and req.api_key is not None:
-        env_key = ENV_KEY_MAP.get(req.provider, req.provider)
-        updates[env_key] = req.api_key
-    if req.keys:
-        for k, v in req.keys.items():
-            env_key = ENV_KEY_MAP.get(k, k)
-            updates[env_key] = v
-
-    for env_key, val in updates.items():
-        if val:
-            os.environ[env_key] = val
-        else:
-            os.environ.pop(env_key, None)
-
-    # Reset singletons
-    OpenAIClientSingleton.reset_client()
-    GeminiClientSingleton.reset_client()
-
-    if req.persist and updates:
-        _persist_to_env_file(updates)
-
-    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
-    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
-
-    badge = "[IN MEMORY ONLY]"
-    if req.persist:
-        badge = "[SAVED IN .ENV]"
-    elif updates:
-        first_key = list(updates.keys())[0]
-        badge = statuses.get(first_key, {}).get("badge", badge)
-
-    return {
-        "status": "ok",
-        "badge": badge,
-        "storage_badge": badge,
-        "keys": statuses,
-    }
-
-@app.post("/api/keys/persist")
-async def persist_api_keys(req: KeyPersistRequest):
-    """Persists current in-memory API keys (or provided keys) to .env line-by-line."""
-    updates = {}
-    if req.provider and req.api_key is not None:
-        env_key = ENV_KEY_MAP.get(req.provider, req.provider)
-        updates[env_key] = req.api_key
-        if req.api_key:
-            os.environ[env_key] = req.api_key
-        else:
-            os.environ.pop(env_key, None)
-    if req.keys:
-        for k, v in req.keys.items():
-            env_key = ENV_KEY_MAP.get(k, k)
-            updates[env_key] = v
-            if v:
-                os.environ[env_key] = v
-            else:
-                os.environ.pop(env_key, None)
-
-    if not updates:
-        for key_name in ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]:
-            val = os.getenv(key_name)
-            if val:
-                updates[key_name] = val
-
-    if updates:
-        _persist_to_env_file(updates)
-
-    # Reset singletons
-    OpenAIClientSingleton.reset_client()
-    GeminiClientSingleton.reset_client()
-
-    tracked_keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY"]
-    statuses = {k: _build_key_status_item(k) for k in tracked_keys}
-
-    return {
-        "status": "ok",
-        "badge": "[SAVED IN .ENV]",
-        "storage_badge": "[SAVED IN .ENV]",
-        "keys": statuses,
-    }
-
-
-# --- Agent Profiles ---
-from src.core.profile_manager import profile_manager
-
-# Load profiles at startup (non-test mode)
-if not _is_testing():
-    profile_manager.load_profiles("profiles")
-    # Auto-migrate legacy conditions into profiles
-    if config_manager.config.conditions:
-        profile_manager.migrate_conditions(config_manager.config.conditions)
-
-@app.get("/api/profiles")
-async def list_profiles():
-    """List all available agent profiles."""
-    return {"profiles": profile_manager.list_profiles()}
-
-@app.get("/api/profiles/{profile_id}")
-async def get_profile(profile_id: str):
-    """Get full details for a specific profile."""
-    profile = profile_manager.get_profile(profile_id)
-    if not profile:
-        return {"error": f"Profile '{profile_id}' not found"}
-    return profile.model_dump()
-
-class ProfileApplyRequest(BaseModel):
-    profile_id: str
-    agent_id: str = "all"  # Which agent to apply the profile to
-
-@app.post("/api/profiles/apply")
-async def apply_profile(req: ProfileApplyRequest):
-    """Apply an agent profile: sets system prompt, voice, and avatar for the target agent."""
-    profile = profile_manager.get_profile(req.profile_id)
-    if not profile:
-        return {"error": f"Profile '{req.profile_id}' not found"}
-
-    # Determine which agents to apply to
-    if req.agent_id == "all":
-        agent_ids = [a.id for a in config_manager.config.agents]
-    else:
-        agent_ids = [req.agent_id]
-
-    results = []
-    for agent_id in agent_ids:
-        # Apply profile to the orchestrator's per-agent state
-        orchestrator.apply_profile(agent_id, profile)
-
-        # Send avatar change to XR clients (if the profile specifies one)
-        if profile.avatar:
-            from src.core.schemas import BaseCommand
-            avatar_cmd = BaseCommand(
-                sender="server_orchestrator",
-                target_device="all",
-                target_agent=agent_id,
-                command_type="action",
-                command="execute_state",
-                subcommand={"avatar": profile.avatar}
-            )
-            await router.route_command(avatar_cmd)
-
-        results.append(orchestrator.get_agent_info(agent_id))
-
-    # Log the profile change
-    telemetry.log_session_event("profile_applied", {
-        "profile_id": req.profile_id,
-        "profile_name": profile.name,
-        "agents": agent_ids,
-    })
-
-    return {
-        "status": "ok",
-        "profile_id": req.profile_id,
-        "profile_name": profile.name,
-        "agents": results,
-    }
-
-class ProfileCreateRequest(BaseModel):
-    id: str
-    name: str
-    identity: dict = None
-    voice: dict = None
-    personality: dict = None
-    guardrails: dict = None
-    avatar: str = None
-
-@app.post("/api/profiles/create")
-async def create_profile(req: ProfileCreateRequest):
-    """Create a new profile at runtime (from WoZ console or XR device)."""
-    try:
-        profile = profile_manager.create_profile(req.model_dump(exclude_none=True))
-        return {"status": "ok", "profile": profile.model_dump()}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.delete("/api/profiles/{profile_id}")
-async def delete_profile(profile_id: str):
-    """Delete an agent profile by ID."""
-    success = profile_manager.delete_profile(profile_id)
-    if not success:
-        return JSONResponse(
-            status_code=404,
-            content={"error": f"Profile '{profile_id}' not found"}
-        )
-    return {"status": "success", "profile_id": profile_id}
-
-@app.get("/api/agents/{agent_id}")
-async def get_agent_state(agent_id: str):
-    """Returns the current profile and state for a specific agent."""
-    return orchestrator.get_agent_info(agent_id)
-
-# --- Deprecated: Conditions (auto-redirected to profiles) ---
-
-class ConditionApplyRequest(BaseModel):
-    condition_id: str
-
-@app.get("/api/conditions")
-async def get_conditions():
-    """[Deprecated] Use GET /api/profiles instead. Returns profiles as conditions for compatibility."""
-    return {"conditions": {p["id"]: p for p in profile_manager.list_profiles()}}
-
-@app.post("/api/conditions/apply")
-async def apply_condition(req: ConditionApplyRequest):
-    """[Deprecated] Use POST /api/profiles/apply instead. Redirects to profile application."""
-    # Try the condition ID as-is, then with condition_ prefix (from migration)
-    profile = profile_manager.get_profile(req.condition_id)
-    if not profile:
-        profile = profile_manager.get_profile(f"condition_{req.condition_id}")
-    if not profile:
-        return {"error": f"No profile found for condition '{req.condition_id}'"}
-
-    # Delegate to profile application
-    orchestrator.apply_profile("all", profile)
-    telemetry.log_session_event("condition_applied", {
-        "condition_id": req.condition_id,
-        "migrated_to_profile": profile.id,
-    })
-    return {
-        "status": "ok",
-        "condition_id": req.condition_id,
-        "profile_id": profile.id,
-        "deprecated": "Use POST /api/profiles/apply instead",
-    }
-
-# --- Scripted Scenarios ---
-from src.core.scenario_runner import scenario_runner
-
-# Load scenarios at import time (non-test mode)
-if not _is_testing():
-    scenario_runner.load_scenarios_from_dir("scenarios")
-
-class ScenarioLoadRequest(BaseModel):
-    scenario_id: str
-
-@app.get("/api/scenarios")
-async def list_scenarios():
-    """List all available experiment scenarios."""
-    return {"scenarios": scenario_runner.list_scenarios()}
-
-@app.post("/api/scenarios")
-async def create_scenario(data: dict):
-    """Create a new experiment scenario and persist it to scenarios/<scenario_id>.yaml"""
-    from src.core.scenario_runner import Scenario, ScenarioStep
-    try:
-        scenario_id = data.get("id") or f"scenario_{int(time.time())}"
-        name = data.get("name") or "New Custom Scenario"
-        description = data.get("description") or ""
-        raw_steps = data.get("steps") or []
-        
-        steps = []
-        for i, s in enumerate(raw_steps):
-            step_id = s.get("id") or f"step_{i+1}"
-            instruction = s.get("instruction") or f"Step {i+1} instruction"
-            action = s.get("action")
-            condition = s.get("condition")
-            auto_marker = s.get("auto_marker")
-            duration_seconds = s.get("duration_seconds")
-            steps.append(ScenarioStep(
-                id=step_id,
-                instruction=instruction,
-                action=action,
-                condition=condition,
-                auto_marker=auto_marker,
-                duration_seconds=duration_seconds
-            ))
-            
-        new_scenario = Scenario(id=scenario_id, name=name, description=description, steps=steps)
-        scenario_runner.add_scenario(new_scenario, save_to_disk=True)
-        return {"status": "ok", "scenario": new_scenario.model_dump(), "scenarios": scenario_runner.list_scenarios()}
-    except Exception as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-
-@app.post("/api/scenarios/load")
-async def load_scenario(req: ScenarioLoadRequest):
-    """Load and start a scenario from step 1."""
-    try:
-        step = scenario_runner.start(req.scenario_id)
-        # Handle auto-actions for the first step
-        await _execute_step_side_effects(step)
-        return {"status": "ok", **scenario_runner.get_status()}
-    except ValueError as e:
-        return {"error": str(e)}
-
-@app.post("/api/scenarios/advance")
-async def advance_scenario():
-    """Advance to the next step in the active scenario."""
-    try:
-        step = scenario_runner.advance()
-        if step is None:
-            return {"status": "completed", "active": False}
-        await _execute_step_side_effects(step)
-        return {"status": "ok", **scenario_runner.get_status()}
-    except ValueError as e:
-        return {"error": str(e)}
-
-@app.get("/api/scenarios/status")
-async def get_scenario_status():
-    """Get the current scenario runner state."""
-    return scenario_runner.get_status()
-
-@app.post("/api/scenarios/stop")
-async def stop_scenario():
-    """Stop the active scenario without completing it."""
-    scenario_runner.stop()
-    return {"status": "ok", "active": False}
-
-async def _execute_step_side_effects(step):
-    """Execute auto-actions, conditions, and markers for a scenario step."""
-    from src.core.scenario_runner import ScenarioStep
-
-    # Auto-log marker
-    if step.auto_marker:
-        try:
-            session_manager.add_marker(step.auto_marker, {"source": "scenario"})
-            telemetry.log_marker(step.auto_marker, {"source": "scenario"})
-        except ValueError:
-            pass  # No active session: skip marker
-
-    # Auto-apply condition
-    if step.condition:
-        config = config_manager.config
-        if config.conditions and step.condition in config.conditions:
-            cond = config.conditions[step.condition]
-            orchestrator.set_system_prompt(cond.system_prompt)
-            telemetry.log_session_event("condition_applied", {
-                "condition_id": step.condition,
-                "source": "scenario",
-            })
-
-    # Auto-execute action
-    if step.action:
-        from src.core.schemas import BaseCommand
-        action_cmd = BaseCommand(
-            sender="server_orchestrator",
-            target_device="all",
-            target_agent="all",
-            command_type="action",
-            command="execute_state",
-            subcommand=step.action,
-        )
-        await router.route_command(action_cmd)
-
-# --- XR Telemetry Ingest ---
-
-class XRTelemetryBatch(BaseModel):
-    device_id: str
-    frames: list[dict]
-
-@app.post("/api/xr/telemetry")
-async def ingest_xr_telemetry(batch: XRTelemetryBatch):
-    """Receive batched XR telemetry frames (head/hand/gaze) from clients."""
-    telemetry.log_xr_telemetry(batch.device_id, batch.frames)
-    return {"status": "ok", "frames_received": len(batch.frames)}
-
-@app.websocket("/ws/client/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """
-    Client entrypoint for the Wizard of Oz panel or Web Agents.
-    Hands the connection over to the WS Transport Layer so it can track
-    who is sending or receiving commands.
-    """
-    await ws_transport.connect(websocket, client_id)
-    # Block and listen to this specific socket
-    await ws_transport.handle_incoming(websocket, client_id)
-
-# --- System Logs Streamer ---
-
-log_subscribers = []
-
-@app.websocket("/ws/logs")
-async def websocket_logs_endpoint(websocket: WebSocket):
-    """
-    Dedicated endpoint for streaming server logs to the WoZ console UI.
-    """
-    await websocket.accept()
-    log_subscribers.append(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except Exception:
-        pass
-    finally:
-        log_subscribers.remove(websocket)
-
-class WebsocketLogHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            if not log_subscribers:
-                return
-            log_entry = self.format(record)
-            payload = json.dumps({"level": record.levelname, "name": record.name, "message": log_entry})
-            loop = asyncio.get_running_loop()
-            for conn in list(log_subscribers):
-                try:
-                    loop.create_task(conn.send_text(payload))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-ws_logger = WebsocketLogHandler()
-ws_logger.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] - %(name)s - %(message)s'))
-
-# --- File Logging ---
-# Write all logs to a rotating log file for future review
-log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
-os.makedirs(log_dir, exist_ok=True)
-log_file_path = os.path.join(log_dir, "OVARP_server.log")
-
-file_handler = RotatingFileHandler(log_file_path, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-file_handler.setFormatter(logging.Formatter('%(asctime)s - [%(levelname)s] - %(name)s - %(message)s'))
-file_handler.setLevel(logging.DEBUG)
-
-# Register with root and all relevant loggers
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-root_logger.addHandler(ws_logger)
-root_logger.addHandler(file_handler)
-
-# Register our custom OVARP loggers (OVARP.router, OVARP.orchestrator, OVARP.gemini)
-OVARP_logger = logging.getLogger("OVARP")
-OVARP_logger.setLevel(logging.DEBUG)
-OVARP_logger.addHandler(ws_logger)
-OVARP_logger.addHandler(file_handler)
-OVARP_logger.propagate = False  # Prevent duplicate messages from root logger
-
-logging.getLogger("uvicorn.access").addHandler(ws_logger)
-logging.getLogger("uvicorn.access").addHandler(file_handler)
-logging.getLogger("uvicorn.error").addHandler(ws_logger)
-logging.getLogger("uvicorn.error").addHandler(file_handler)
-logging.getLogger("fastapi").addHandler(ws_logger)
-logging.getLogger("fastapi").addHandler(file_handler)
-
-# --------------------------
-
-# Mount the UI based on OVARP_HEADLESS mode
-# If headless is set, the root URL will serve a lightweight dashboard instead of the full 3D WoZ Console
+# The static mount must come last: it claims "/" and would shadow the API routes.
 static_path = os.path.join(os.path.dirname(__file__), "static")
-_headless_new = os.environ.get("OVARP_HEADLESS", "").lower() in ["true", "1", "yes"]
-_headless_legacy = os.environ.get("OAF_HEADLESS", "").lower() in ["true", "1", "yes"]
-if _headless_legacy and not _headless_new:
-    logging.getLogger("OVARP").warning("OAF_HEADLESS is deprecated, use OVARP_HEADLESS instead.")
-headless_mode = _headless_new or _headless_legacy
-
-class NoCacheStaticFiles(StaticFiles):
-    async def get_response(self, path, scope):
-        response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-
 if os.path.exists(static_path):
-    if headless_mode:
+
+    @app.get("/player")
+    async def serve_player():
+        """A plain page for talking to the agent: text, push-to-talk, markers.
+
+        Not the participant-facing client — that is the Unity WebGL build at
+        ``config.yaml → client_url``. This one exists so the pipeline can be
+        exercised with nothing but a browser.
+
+        Registered before the static mount, which claims "/" and would otherwise
+        answer this path itself.
+        """
+        return FileResponse(os.path.join(static_path, "player.html"))
+
+    if is_headless():
         logger.info("Starting in HEADLESS mode. Full WoZ console & 3D Avatar are disabled.")
+
         @app.get("/")
         async def serve_headless():
             return FileResponse(os.path.join(static_path, "headless.html"))
-        app.mount("/", NoCacheStaticFiles(directory=static_path, html=False), name="static")
+
+        app.mount("/", StaticFiles(directory=static_path, html=False), name="static")
     else:
-        # Default Mode: Serve the full UI at root
-        app.mount("/", NoCacheStaticFiles(directory=static_path, html=True), name="static")
+        app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
 else:
     logger.warning("Static directory not found. UI will not be available.", path=static_path)

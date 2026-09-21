@@ -223,3 +223,6 @@ scripts/anonymize_for_review.ps1
 pytest*.log
 .agents/
 data/evaluations/
+
+# Encrypted provider credentials written by the API Key Store
+provider_keys.yaml

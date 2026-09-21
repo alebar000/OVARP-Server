@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) - WebSocket Transport
+Open Virtual Agent Research Platform (OVARP) — WebSocket Transport
 
 Bidirectional transport layer for web-based clients using FastAPI's
 WebSocket support. Manages connection lifecycle, broadcasts outbound
 messages to all connected clients, and dispatches inbound messages
 to registered framework callbacks.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -59,6 +59,10 @@ class WebSocketTransport(BaseTransport):
             if not self.active_connections[client_id]:
                 self.active_connections.pop(client_id, None)
             logger.info("WebSocket client disconnected", client_id=client_id, total_clients=len(self.active_connections))
+
+    def connected_client_ids(self) -> list:
+        """Sorted client_ids that currently have at least one open WebSocket."""
+        return sorted(cid for cid, socks in self.active_connections.items() if socks)
 
     async def handle_incoming(self, websocket: WebSocket, client_id: str):
         """Loop to read incoming messages from a specific active connecton"""

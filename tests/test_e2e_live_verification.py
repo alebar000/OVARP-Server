@@ -2,11 +2,15 @@
 End-to-End Live Verification Test Suite for OVARP Server.
 
 Automated Agent-as-User test script verifying:
-1. Server endpoints: GET /, GET /static/player.html, GET /api/keys/status,
+1. Server endpoints: GET /, GET /player, GET /api/keys/status,
    POST /api/keys/update, POST /api/keys/persist,
-   PUT /api/session/markers/{marker_id}, POST /api/evaluations/ovarp.
+   PATCH /api/session/marker/{marker_id}, POST /api/evaluations/ovarp.
 2. SUS calculation formula correctness across test vectors (max=100, min=0, mixed).
-3. API key storage status badges ('[GUARDADO EN .ENV]' vs '[SOLO EN MEMORIA - NO GUARDADO]').
+3. API key storage status badges ('[SAVED, ...]' vs '[IN MEMORY ONLY]').
+
+Saved keys now go to the encrypted provider_keys.yaml rather than .env, so the
+badge names the store instead of the file, and the fixture below keeps the test
+from writing into the working copy.
 """
 
 import os
@@ -16,7 +20,15 @@ from fastapi.testclient import TestClient
 
 os.environ["OVARP_TESTING"] = "1"
 
+from src.core import key_store
 from src.main import app
+
+
+@pytest.fixture(autouse=True)
+def isolated_key_store(tmp_path, monkeypatch):
+    """Persisting a key must not leave one in the checkout."""
+    monkeypatch.setattr(key_store, "KEY_STORE_FILE", tmp_path / "provider_keys.yaml")
+    yield
 
 
 # --- Helper Function: SUS Score Calculation ---
@@ -205,7 +217,7 @@ async def test_agent_as_user_full_workflow():
         assert root_resp.status_code in [200, 404, 405]
 
         # Step 2: Standalone player page
-        player_resp = await client.get("/static/player.html")
+        player_resp = await client.get("/player")
         assert player_resp.status_code in [200, 404, 405]
 
         # Step 3: Key status & memory update
@@ -228,7 +240,7 @@ async def test_agent_as_user_full_workflow():
         })
         assert persist_key_resp.status_code in [200, 404, 405]
         if persist_key_resp.status_code == 200:
-            assert "[SAVED IN .ENV]" in persist_key_resp.text
+            assert "[SAVED," in persist_key_resp.text
 
         # Step 5: SUS Evaluation submission
         eval_resp = await client.post("/api/evaluations/ovarp", json={
