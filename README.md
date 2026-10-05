@@ -738,10 +738,12 @@ SDK clients receive it through the `onLatency` callback.
 |------|-------------|-------|
 | **Alexander Barquero Elizondo*** | AURAxLAB / ECCI / CITIC, Universidad de Costa Rica | alexander.barqueroelizondo@ucr.ac.cr |
 | Briam David Mora Villalobos | Spatial Labs, Universidad Cenfotec | bmorav@ucenfotec.ac.cr |
-| Stephanie Isabel Martinez Iglesias | Spatial Labs, Universidad Cenfotec | smartinezi@ucenfotec.ac.cr |
+| Elena Portuguez | Spatial Labs, Universidad Cenfotec | — |
 | Rodrigo L. Calvo | Ruiz HCI Lab, University of Florida | rodrigo.calvo@ufl.edu |
 
 *Corresponding author.
+
+**Collaborators:** Stephanie Isabel Martinez Iglesias (Spatial Labs, Universidad Cenfotec), pilot sessions.
 
 ---
 
