@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OVARP Player</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --bg: #0b1120;
+      --bg-card: #111827;
+      --border: rgba(255,255,255,0.09);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+      flex-wrap: wrap;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    header .meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .status.online { color: var(--emerald); }
+    .status.offline { color: var(--rose); }
+    .chip {
+      font-size: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--muted);
+      background: #1e293b;
+      border-radius: 6px;
+      padding: 4px 8px;
+    }
+    a.console-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    a.console-link:hover { color: var(--accent-hover); }
+    .hint {
+      width: 100%;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.1fr) minmax(280px, 0.9fr);
+      min-height: 0;
+    }
+    .avatar-stage {
+      position: relative;
+      min-height: 320px;
+      background: #1a1a2e;
+    }
+    #avatar-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+    }
+    .chat-pane {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      border-left: 1px solid var(--border);
+      min-height: 0;
+    }
+    .meters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .meters span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+    #chat-log {
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bubble {
+      max-width: 90%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+    }
+    .bubble.agent {
+      align-self: flex-start;
+      background: #1e293b;
+    }
+    .composer {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-card);
+      flex-wrap: wrap;
+    }
+    #chat-input {
+      flex: 1;
+      min-width: 140px;
+      background: #1a2233;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #send-btn { background: var(--accent); color: #fff; }
+    #send-btn:hover { background: var(--accent-hover); }
+    #mic-btn { background: #1e293b; color: var(--text); }
+    #mic-btn.recording { background: var(--rose); color: #fff; }
+    #stop-audio-btn, #mark-btn, #copy-pair-btn { background: transparent; color: var(--muted); }
+    /* Avatar stage overlays: label the "gray sphere" area and show a clear
+       recording state so the participant always knows what is happening. */
+    .stage-label {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      z-index: 2;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text);
+      background: rgba(11,17,32,0.72);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 9px;
+      pointer-events: none;
+    }
+    /* Empty-state that explains the gray sphere/area is the agent's avatar.
+       Shown until a 3D model actually loads (none ships by default). */
+    .avatar-placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 16px;
+      pointer-events: none;
+    }
+    .avatar-placeholder[hidden] { display: none; }
+    .avatar-placeholder-ring {
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      border: 2px dashed rgba(148,163,184,0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+    }
+    .avatar-placeholder-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+    .avatar-placeholder-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-width: 240px;
+      line-height: 1.45;
+    }
+    /* Always-visible mic indicator. Idle it reads as a labelled microphone so a
+       first-time user knows what it is; while talking it turns red and pulses. */
+    .rec-indicator {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: rgba(11,17,32,0.72);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 11px;
+    }
+    .rec-indicator.recording {
+      color: #fff;
+      background: var(--rose);
+      border-color: var(--rose);
+    }
+    .rec-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex: none;
+    }
+    .rec-indicator.recording .rec-dot {
+      background: #fff;
+      animation: rec-pulse 1s ease-in-out infinite;
+    }
+    @keyframes rec-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.7); }
+    }
+    .avatar-stage.recording { outline: 2px solid var(--rose); outline-offset: -2px; }
+    /* Persistent "how to talk" copy under the composer. */
+    .talk-hint {
+      padding: 0 12px 12px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      background: var(--bg-card);
+    }
+    .talk-hint kbd, .empty-chat kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.72rem;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    /* Empty-chat placeholder so the log is never a blank void. */
+    .empty-chat {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    /* Offline notice so the client confirms whether the server is up. */
+    .server-banner {
+      margin: 12px 16px 0;
+      padding: 9px 12px;
+      border: 1px solid rgba(244,63,94,0.4);
+      background: rgba(244,63,94,0.12);
+      color: #fecdd3;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    .server-banner[hidden] { display: none; }
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 42vh 1fr; }
+      .chat-pane { border-left: 0; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OVARP Player</h1>
+    <div class="meta">
+      <span id="conn-status" class="status offline">Server: connecting…</span>
+      <span id="device-chip" class="chip">web_panel_01</span>
+      <span id="agent-chip" class="chip">agent_alpha</span>
+      <button id="copy-pair-btn" type="button">Copy pair info</button>
+      <a class="console-link" href="/">Back to console</a>
+    </div>
+    <div class="hint" id="pair-hint">
+      VR / WoZ: set Device to this player id so speech and gestures arrive here without Unity.
+    </div>
+  </header>
+  <main>
+    <div class="avatar-stage" id="avatar-stage">
+      <span class="stage-label">Agent</span>
+      <div id="rec-indicator" class="rec-indicator" role="status" aria-live="polite"
+        title="Microphone. It turns red and captures your voice while you hold to talk.">
+        <span class="rec-dot"></span> <span id="rec-label">Mic — hold Space to talk</span>
+      </div>
+      <div id="avatar-placeholder" class="avatar-placeholder">
+        <div class="avatar-placeholder-ring">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>
+          </svg>
+        </div>
+        <div class="avatar-placeholder-title">This is the agent</div>
+        <div class="avatar-placeholder-sub">Its 3D face shows here once a model is loaded. You can still talk to it below.</div>
+      </div>
+      <canvas id="avatar-canvas" aria-label="Agent avatar"></canvas>
+    </div>
+    <section class="chat-pane">
+      <div class="meters" aria-label="Pipeline latency">
+        STT <span id="lat-stt">—</span>ms
+        · LLM <span id="lat-llm">—</span>ms
+        · TTS <span id="lat-tts">—</span>ms
+        · total <span id="lat-total">—</span>ms
+      </div>
+      <div id="server-banner" class="server-banner" role="alert" hidden>
+        Waiting for the OVARP server… If this stays here, make sure the server is running,
+        then it will reconnect automatically.
+      </div>
+      <div id="chat-log" aria-live="polite">
+        <div id="empty-chat" class="empty-chat">
+          No messages yet.<br>Type below and press <kbd>Enter</kbd>, or hold <kbd>Space</kbd> / the mic button to talk.
+        </div>
+      </div>
+      <div class="composer-wrap">
+        <form id="chat-form" class="composer">
+          <input id="chat-input" type="text" autocomplete="off"
+            placeholder="Type a message, or hold Space to talk…" aria-label="Message">
+          <button id="send-btn" type="submit">Send</button>
+          <button id="mic-btn" type="button" title="Hold this button or the Space key to talk">Hold to talk</button>
+          <button id="mark-btn" type="button">Mark event</button>
+          <button id="stop-audio-btn" type="button">Stop audio</button>
+        </form>
+        <div class="talk-hint">
+          <strong>How to talk:</strong> hold the <strong>Hold to talk</strong> button or press and hold
+          <kbd>Space</kbd> to record, then release to send. Or type a message and press <kbd>Enter</kbd>.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import OVARPClient from './sdk/OVARP-client.js';
+
+    const RECONNECT_DELAY_MIN_MS = 2000;
+    const RECONNECT_DELAY_MAX_MS = 30000;
+    let reconnectDelayMs = RECONNECT_DELAY_MIN_MS;
+
+    const params = new URLSearchParams(window.location.search);
+    const deviceId = params.get('device') || 'web_panel_01';
+    const agentId = params.get('agent') || 'agent_alpha';
+
+    const chatLog = document.getElementById('chat-log');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const connStatus = document.getElementById('conn-status');
+    const micBtn = document.getElementById('mic-btn');
+    const stopAudioBtn = document.getElementById('stop-audio-btn');
+    const markBtn = document.getElementById('mark-btn');
+    const copyPairBtn = document.getElementById('copy-pair-btn');
+    const recIndicator = document.getElementById('rec-indicator');
+    const recLabel = document.getElementById('rec-label');
+    const REC_LABEL_IDLE = 'Mic — hold Space to talk';
+    const REC_LABEL_ON = 'Recording your voice… release to send';
+    const avatarStage = document.getElementById('avatar-stage');
+    const serverBanner = document.getElementById('server-banner');
+    const emptyChat = document.getElementById('empty-chat');
+    const avatarPlaceholder = document.getElementById('avatar-placeholder');
+
+    document.getElementById('device-chip').textContent = deviceId;
+    document.getElementById('agent-chip').textContent = agentId;
+    document.getElementById('pair-hint').textContent =
+      `In WoZ Control set Device to ${deviceId}. Headset URL: ws://${window.location.host}/ws/client/${deviceId}`;
+
+    function appendChat(role, text) {
+      if (emptyChat && emptyChat.isConnected) emptyChat.remove();
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
+      chatLog.appendChild(bubble);
+      chatLog.scrollTop = chatLog.scrollHeight;
+      return bubble;
+    }
+
+    // While a Gemini reply streams in, deltas append to this bubble instead of
+    // each spawning a new chat entry. Cleared once the final llm_reply arrives.
+    let streamingBubble = null;
+
+    function setStatus(online, label) {
+      connStatus.className = `status ${online ? 'online' : 'offline'}`;
+      connStatus.textContent = label;
+      // The banner is the client's explicit "is the server up?" confirmation.
+      if (serverBanner) serverBanner.hidden = online;
+    }
+
+    function setMs(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (value == null || value === '') {
+        el.textContent = '—';
+        return;
+      }
+      const n = Number(value);
+      el.textContent = Number.isFinite(n) ? String(Math.round(n)) : '—';
+    }
+
+    function updateLatency(latency) {
+      if (!latency || typeof latency !== 'object') return;
+      setMs('lat-stt', latency.stt_ms);
+      setMs('lat-llm', latency.llm_ms);
+      setMs('lat-tts', latency.tts_ms);
+      const total = latency.total_ms != null
+        ? latency.total_ms
+        : (Number(latency.stt_ms || 0) + Number(latency.llm_ms || 0) + Number(latency.tts_ms || 0));
+      setMs('lat-total', total);
+    }
+
+    const client = new OVARPClient({
+      deviceId,
+      agentId,
+      canvas: document.getElementById('avatar-canvas'),
+      callbacks: {
+        onConnect: () => {
+          setStatus(true, 'Server online');
+          reconnectDelayMs = RECONNECT_DELAY_MIN_MS;
+        },
+        onDisconnect: () => {
+          setStatus(false, 'Server offline — reconnecting…');
+          setTimeout(() => client.connect(), reconnectDelayMs);
+          reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_DELAY_MAX_MS);
+        },
+        onMessage: (sub) => {
+          // Text already rendered incrementally via onMessageChunk (Gemini): don't
+          // duplicate it, just drop the placeholder. Other providers never chunk,
+          // so streamingBubble stays null and the full text is appended here as before.
+          if (streamingBubble) {
+            streamingBubble = null;
+          } else {
+            const text = typeof sub === 'string' ? sub : (sub?.text || '');
+            if (text) appendChat('agent', text);
+          }
+          if (sub && typeof sub === 'object' && sub.latency) updateLatency(sub.latency);
+        },
+        onMessageChunk: (sub) => {
+          const delta = sub?.text || '';
+          if (!delta) return;
+          if (!streamingBubble) streamingBubble = appendChat('agent', '');
+          streamingBubble.textContent += delta;
+          chatLog.scrollTop = chatLog.scrollHeight;
+        },
+        onLatency: (lat) => updateLatency(lat),
+        onMarkerLogged: (label) => appendChat('agent', `Marker: ${label}`),
+        onLog: (msg, type) => {
+          if (type === 'error') console.warn('[OVARP Player]', msg);
+        }
+      }
+    });
+
+    client.connect();
+
+    // Load whichever model is installed. Asking for a bundled default is what
+    // used to 404 on every fresh clone; with none present the participant keeps
+    // the labelled placeholder so the empty stage still reads as the agent.
+    (async () => {
+      try {
+        const resp = await fetch('/api/avatars');
+        if (!resp.ok) return;
+        const [first] = (await resp.json()).avatars || [];
+        if (first) {
+          await client.loadAvatar(first.url);
+          if (avatarPlaceholder) avatarPlaceholder.hidden = true;
+        }
+      } catch (err) {
+        console.warn('[OVARP Player] Avatar load failed', err);
+      }
+    })();
+
+    chatForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text) return;
+      appendChat('user', text);
+      client.sendText(text);
+      chatInput.value = '';
+    });
+
+    // A single guard keeps the button and the Space key from double-triggering
+    // start/stop on the underlying client.
+    let micActive = false;
+    const startMic = async () => {
+      if (micActive) return;
+      micActive = true;
+      micBtn.classList.add('recording');
+      micBtn.textContent = 'Listening…';
+      if (recIndicator) recIndicator.classList.add('recording');
+      if (recLabel) recLabel.textContent = REC_LABEL_ON;
+      if (avatarStage) avatarStage.classList.add('recording');
+      await client.startMic();
+    };
+    const stopMic = () => {
+      if (!micActive) return;
+      micActive = false;
+      micBtn.classList.remove('recording');
+      micBtn.textContent = 'Hold to talk';
+      if (recIndicator) recIndicator.classList.remove('recording');
+      if (recLabel) recLabel.textContent = REC_LABEL_IDLE;
+      if (avatarStage) avatarStage.classList.remove('recording');
+      client.stopMic();
+    };
+
+    micBtn.addEventListener('mousedown', startMic);
+    micBtn.addEventListener('mouseup', stopMic);
+    micBtn.addEventListener('mouseleave', () => {
+      if (micActive) stopMic();
+    });
+    micBtn.addEventListener('touchstart', (event) => {
+      event.preventDefault();
+      startMic();
+    });
+    micBtn.addEventListener('touchend', (event) => {
+      event.preventDefault();
+      stopMic();
+    });
+
+    // Push-to-talk: hold Space to record, release to send. Ignored while the
+    // participant is typing so the space bar still types spaces in the input.
+    const isTypingTarget = (el) =>
+      !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    document.addEventListener('keydown', (event) => {
+      if (event.code !== 'Space' || event.repeat || isTypingTarget(document.activeElement)) return;
+      event.preventDefault();
+      startMic();
+    });
+    document.addEventListener('keyup', (event) => {
+      if (event.code !== 'Space' || isTypingTarget(document.activeElement)) return;
+      event.preventDefault();
+      stopMic();
+    });
+
+    markBtn.addEventListener('click', () => {
+      const label = window.prompt('Marker label', 'player_event') || '';
+      const trimmed = label.trim();
+      if (!trimmed) return;
+      client.addMarker(trimmed, { source: 'player', device: deviceId });
+    });
+
+    copyPairBtn.addEventListener('click', async () => {
+      const info = `device=${deviceId}\nws://` + window.location.host + `/ws/client/${deviceId}`;
+      try {
+        await navigator.clipboard.writeText(info);
+        copyPairBtn.textContent = 'Copied';
+        setTimeout(() => { copyPairBtn.textContent = 'Copy pair info'; }, 1200);
+      } catch (err) {
+        console.warn('[OVARP Player] clipboard', err);
+      }
+    });
+
+    stopAudioBtn.addEventListener('click', () => {
+      const player = document.getElementById('OVARP-tts-audio-player');
+      if (player) {
+        player.pause();
+        player.currentTime = 0;
+      }
+    });
+  </script>
+</body>
+</html>

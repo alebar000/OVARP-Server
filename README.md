@@ -6,14 +6,14 @@
   <img src="https://img.shields.io/badge/Three.js-r170-black?logo=three.js" alt="Three.js" />
 </p>
 
-<h1 align="center">🧬 Open Virtual Agent Research Platform - Server</h1>
+<h1 align="center">🧬 Open Virtual Agent Research Platform — Server</h1>
 
 <p align="center">
   <strong>A modular, research-oriented server for driving embodied virtual agents across heterogeneous platforms (e.g., Web, Mobile, XR), featuring real-time AI orchestration with provider-agnostic LLM/TTS support, and a built-in Wizard-of-Oz console.</strong>
 </p>
 
 <p align="center">
-  <em>Developed at the Universidad de Costa Rica (ECCI/CITIC) with the Spatial Lab, Universidad Cenfotec, and the University of Florida</em>
+  <em>Part of the <a href="https://github.com/AURAxLab">AURAxLab</a> and <a href="https://github.com/SpatialLab-UCENFOTEC">SpatialLab</a> research initiative</em>
 </p>
 
 ---
@@ -22,22 +22,22 @@
 
 The **Open Virtual Agent Research Platform (OVARP)** is a provider-agnostic server that sits between AI services (such as OpenAI, Google Gemini, or any OpenAI-compatible endpoint) and client applications (such as web apps, mobile clients, or XR engines like Unity and Unreal) to orchestrate the behavior of embodied virtual agents. It provides:
 
-- 🧠 **Multi-provider LLM** - Hot-swap between any supported LLM (e.g., OpenAI, Gemini, Ollama, LM Studio, vLLM) mid-conversation
-- 🔊 **Multi-provider TTS** - Auto-matched to active LLM (e.g., OpenAI voices, Gemini voices)
-- 🔌 **Custom Endpoints** - Register any OpenAI-compatible API from the UI - no code changes needed
-- 🎙️ **STT** - Speech-to-text transcription from client microphone audio
-- 🎤 **Voice Selection** - Pick from 22 TTS voices with gender badges (♂️/♀️/⚧️), switchable at runtime
-- 👤 **Agent Profiles** - Rich persona definitions (identity, voice, personality, guardrails, backstory) in YAML, applied per-agent
-- 🧑 **3D Avatar** - Lip-synced, emotion-reactive embodied agent via `@OVARP/web-client`
-- 🎮 **Wizard-of-Oz Console** - Full web dashboard for researchers to monitor and control experiments
-- 📡 **Dual Transport** - WebSocket (for web and mobile clients) + ZeroMQ (for low-latency XR engines), extensible to other protocols
-- 📊 **Telemetry & Logging** - Structured JSONL event capture with CSV export
-- 🧪 **Session Management** - Start/pause/resume/end experiment sessions with participant tracking
-- 📌 **Event Markers** - Timestamped researcher annotations during sessions
-- ⏱️ **Latency Metrics** - Real-time pipeline timing (STT, LLM, TTS) per interaction
-- 📋 **Scripted Scenarios** - YAML-defined experiment protocols with step-by-step execution
-- 🥽 **XR Telemetry Ingest** - Batch head/hand/gaze tracking data from XR clients
-- 🗂️ **Per-Agent State** - Each agent maintains its own conversation history, prompt, and voice
+- 🧠 **Multi-provider LLM** — Hot-swap between any supported LLM (e.g., OpenAI, Gemini, Ollama, LM Studio, vLLM) mid-conversation
+- 🔊 **Multi-provider TTS** — Auto-matched to active LLM (e.g., OpenAI voices, Gemini voices)
+- 🔌 **Custom Endpoints** — Register any OpenAI-compatible API from the UI — no code changes needed
+- 🎙️ **STT** — Speech-to-text transcription from client microphone audio
+- 🎤 **Voice Selection** — Pick from 22 TTS voices with gender badges (♂️/♀️/⚧️), switchable at runtime
+- 👤 **Agent Profiles** — Rich persona definitions (identity, voice, personality, guardrails, backstory) in YAML, applied per-agent
+- 🧑 **3D Avatar** — Lip-synced, emotion-reactive embodied agent via `@OVARP/web-client`
+- 🎮 **Wizard-of-Oz Console** — Full web dashboard for researchers to monitor and control experiments
+- 📡 **Dual Transport** — WebSocket (for web and mobile clients) + ZeroMQ (for low-latency XR engines), extensible to other protocols
+- 📊 **Telemetry & Logging** — Structured JSONL event capture with CSV export
+- 🧪 **Session Management** — Start/pause/resume/end experiment sessions with participant tracking
+- 📌 **Event Markers** — Timestamped researcher annotations during sessions
+- ⏱️ **Latency Metrics** — Real-time pipeline timing (STT, LLM, TTS) per interaction
+- 📋 **Scripted Scenarios** — YAML-defined experiment protocols with step-by-step execution
+- 🥽 **XR Telemetry Ingest** — Batch head/hand/gaze tracking data from XR clients
+- 🗂️ **Per-Agent State** — Each agent maintains its own conversation history, prompt, and voice
 
 ---
 
@@ -89,15 +89,15 @@ The **Open Virtual Agent Research Platform (OVARP)** is a provider-agnostic serv
 
 - Python 3.10+
 - An API key for at least one provider:
-  - [OpenAI API Key](https://platform.openai.com/api-keys) - for LLM + TTS + STT
-  - [Google Gemini API Key](https://aistudio.google.com/apikey) - for LLM + TTS
+  - [OpenAI API Key](https://platform.openai.com/api-keys) — for LLM + TTS + STT
+  - [Google Gemini API Key](https://aistudio.google.com/apikey) — for LLM + TTS
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/alebar000/OVARP-Server.git
-cd OVARP-Server
+git clone https://github.com/AURAxLab/OpenVirtualAgentResearchPlatform-Server.git
+cd OpenVirtualAgentResearchPlatform-Server
 
 # Create and activate virtual environment
 python -m venv venv
@@ -108,12 +108,22 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-pip install google-genai   # For Gemini provider
+pip install -r requirements_dev.txt   # Only needed to run the test suite
+pip install google-genai              # For Gemini provider
 
 # Configure API keys
 cp .env.example .env
 # Edit .env and fill in your API keys
 ```
+
+> **Python 3.10+ is required**, not merely recommended: `str | Path` annotations
+> are evaluated at import time and 3.9 fails to start the server.
+
+> If you move or rename the project directory after creating the venv, the
+> scripts in `venv/bin/` keep pointing at the old absolute path and fail with
+> `bad interpreter`. Either recreate the venv, or call the tools through the
+> interpreter — `./venv/bin/python -m pip`, `./venv/bin/python -m pytest` —
+> which does not rely on the shebang.
 
 ### Run the Server
 
@@ -134,6 +144,42 @@ $env:OVARP_HEADLESS="true"; uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```bash
 OVARP_HEADLESS=true uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
+
+---
+
+## 🌐 Connect to the Published Web Client
+
+The reference web client (`../OVARP-UnityWebClient`, Unity 6 WebGL) is published on Vercel at
+**https://ovarp-unity-web-client.vercel.app/**. Its "OVARP server" field is what you point at
+your local server.
+
+**Pointing it at `ws://localhost:8000` or `ws://127.0.0.1:8000` does not work.** A page served
+over `https:` (the Vercel deployment) cannot open a plain `ws://` socket to `localhost` on a
+current Chrome (verified live on Chrome 151, 2026): the connection never reaches the server
+(zero lines in the uvicorn log) and the client hangs until it times out with
+`Timed out connecting to ws://localhost:8000/ws/client/web_01.` No "Mixed Content" warning is
+shown, which is why this looks like a bug rather than a browser policy. Older docs describing
+`ws://localhost:8000` as always safe for a same-machine hosted client are stale for this reason.
+
+The path that actually works end to end is a `wss://` tunnel:
+
+```bash
+# 1. Fill in a real API key in .env (OPENAI_API_KEY or GEMINI_API_KEY):
+#    a placeholder key gets you a valid connection but an "API key not valid" reply.
+uvicorn src.main:app --host 0.0.0.0 --port 8000
+
+# 2. In a second terminal, open an ephemeral tunnel (no account needed):
+cloudflared tunnel --url http://localhost:8000
+```
+
+`cloudflared` prints an `https://<random>.trycloudflare.com` URL. Take that hostname, swap the
+scheme to `wss://`, and paste `wss://<random>.trycloudflare.com/ws/client/web_01` into the "OVARP
+server" field on the published client. This has been verified end to end: WebSocket connects,
+`llm_request` reaches the orchestrator, the configured LLM provider replies, TTS audio streams
+back as `tts_chunk`/`tts_complete`, and an `execute_state` action fires: full pipeline,
+not just transport.
+
+When you're done, stop both `cloudflared` and `uvicorn`; the tunnel URL is public while it runs.
 
 ---
 
@@ -164,40 +210,64 @@ Detailed step-by-step guides for connecting client applications to OVARP:
 
 ## 🎮 WoZ Console Features
 
-The built-in web console provides a full research interface with five tabs:
+The built-in web console provides a full research interface across eight tabs,
+numbered in the order a study actually runs:
 
-### 🎮 Remote Agent Control
-- **Target selection** - Choose device and agent from config dropdowns
-- **Dynamic action buttons** - Auto-generated from `config.yaml` command categories
-- **Direct TTS** - Type text → agent speaks it, bypassing LLM
-- **Telemetry log** - Real-time event stream with CSV export
+`(01) OVERVIEW` · `(02) LLM PLAYGROUND` · `(03) PROFILES` · `(04) STUDY SESSION` ·
+`(05) WOZ CONTROL` · `(06) SURVEYS` · `(07) API KEY STORE` · `(08) SYSTEM LOGS`
+
+### 🧭 Overview
+The landing tab, so a first run opens on something that explains itself:
+- **Quick-Start launchers** — one button per stage of a study, in order
+- **Live system status** — server connection, active session, active LLM provider,
+  API key storage state, connected clients, applied persona
+- **Telemetry export** — markers CSV and full telemetry CSV
+- **Open Player** — launch the participant client without hunting for the URL
+
+A **theme toggle** in the header switches the whole console between dark and light.
+
+### 🎮 WoZ Control
+- **Target selection** — Choose device and agent from config dropdowns
+- **Dynamic action buttons** — Auto-generated from `config.yaml` command categories
+- **Direct TTS** — Type text → agent speaks it, bypassing LLM
+- **Telemetry log** — Real-time event stream with CSV export
 
 ### 💬 LLM Playground
 Interactive chat interface for testing the AI pipeline:
-- **Hot-swap LLM providers** - Switch between OpenAI, Gemini, and custom endpoints mid-conversation
-- **Register custom endpoints** - Add Ollama, LM Studio, vLLM, or any OpenAI-compatible endpoint from the UI
-- **System prompt editor** - Customize the agent's personality in real time
-- **TTS toggle** - Enable/disable voice synthesis
-- **Voice picker** - Choose from 22 TTS voices with gender icons (♂️/♀️/⚧️)
-- **Auto-matched TTS** - When using Gemini LLM → Gemini TTS voice; when using OpenAI → OpenAI voice
-- **Latency badges** - Real-time timing shown on each response (STT, LLM, TTS)
-- **Persistent state** - Chat history, config, and avatar selection survive page reloads
+- **Hot-swap LLM providers** — Switch between OpenAI, Gemini, and custom endpoints mid-conversation
+- **Register custom endpoints** — Add Ollama, LM Studio, vLLM, or any OpenAI-compatible endpoint from the UI
+- **System prompt editor** — Customize the agent's personality in real time
+- **TTS toggle** — Enable/disable voice synthesis
+- **Voice picker** — Choose from 22 TTS voices with gender icons (♂️/♀️/⚧️)
+- **Auto-matched TTS** — When using Gemini LLM → Gemini TTS voice; when using OpenAI → OpenAI voice
+- **Pipeline status card** — which provider, model and voice are actually answering,
+  restated in one place instead of inferred from three separate pickers
+- **Latency readout** — a standing STT / LLM / TTS / Total panel, plus per-reply timing
+  on each message
+- **Stop Audio** — cut the agent off mid-sentence and drop its queued speech
+- **Agent Persona picker** — apply a profile, or create one with **New**, without leaving the tab
+- **Persistent state** — Chat history, config, and avatar selection survive page reloads
 
 ### 🧪 Study Session
 Dedicated experiment management tab:
-- **Session lifecycle** - Start/pause/resume/end with participant ID tracking
-- **Live timer** - Tracks active session duration (correctly pauses)
-- **Event markers** - Timestamped annotations with history display
-- **Session summary** - Live display of session ID, elapsed time, marker count
-- **Scenario runner** - Load YAML protocol scripts with progress bar, auto-applied conditions/markers/actions
+- **Session lifecycle** — Start/pause/resume/end with participant ID tracking
+- **Live timer** — Tracks active session duration (correctly pauses)
+- **Event markers** — Timestamped annotations with history display
+- **Reclassification** — edit a marker's category, label or notes after the fact. The
+  timestamp is never touched and the change is appended to the session log, so the
+  record still shows what was captured live
+- **Marker preset builder** — invent a preset mid-study (held in memory for that run)
+- **Session summary** — Live display of session ID, elapsed time, marker count
+- **Scenario runner** — Load YAML protocol scripts with progress bar, auto-applied conditions/markers/actions
+- **Scenario builder** — compose a protocol step by step and save it to `scenarios/<id>.yaml`
 
 ### 👤 Agent Profiles
 Dedicated profile management tab:
-- **Profile library** - Browse all available profiles with name, role, gender icon, and voice
-- **Profile detail view** - Full identity, personality traits (empathy/formality/self-disclosure), guardrails, voice config, and backstory
-- **Apply to agents** - Select target agent (or "All") and apply a profile with one click
-- **Runtime creation** - Create new profiles via API from XR devices or the console
-- **Conditions migration** - Legacy `conditions:` entries are auto-migrated to profiles on startup
+- **Profile library** — Browse all available profiles with name, role, gender icon, and voice
+- **Profile detail view** — Full identity, personality traits (empathy/formality/self-disclosure), guardrails, voice config, and backstory
+- **Apply to agents** — Select target agent (or "All") and apply a profile with one click
+- **Runtime creation** — Create new profiles via API from XR devices or the console
+- **Conditions migration** — Legacy `conditions:` entries are auto-migrated to profiles on startup
 
 ### 🧑 Embodied Agent
 A 3D avatar rendered with **Three.js + three-vrm** that:
@@ -206,16 +276,68 @@ A 3D avatar rendered with **Three.js + three-vrm** that:
 - 👀 **Blinks** naturally at random intervals
 - 🫁 **Breathes** with subtle spine movement
 - 🔄 **Sways** gently for lifelike idle behavior
-- 📂 **Upload custom VRM models** - Drag-and-drop avatar replacement
+- 📂 **Upload custom VRM models** — Drag-and-drop avatar replacement
+
+**No avatar model ships with this repository** — none is licensed for
+redistribution. Drop `.vrm` or `.glb` files into `src/static/models/` and they
+appear in the console picker, served from `/models/<filename>`; `GET /api/avatars`
+is what the picker reads. With the directory empty the console offers the Upload
+button instead of loading a default, which is what it used to do against a file
+that was never committed.
+
+### 📋 Surveys
+Questionnaires the participant answers on their own device — SUS, UEQ-S and free-text
+prompts, defined in `surveys/*.yaml`. The console hands you a link to send to their
+phone and shows computed scores as responses come in.
+
+### 🔑 API Key Store
+Provider credentials without editing `.env` and restarting:
+- **Apply for this run** — the key takes effect immediately; the provider clients are
+  rebuilt so the next call authenticates with it
+- **Save to the key store** — written to `provider_keys.yaml` (git-ignored), encrypted
+  when `OVARP_SECRET_KEY` is set and in plain text otherwise, and restored on boot
+- **Show / Clear** — the raw key is never part of a status response; **Show** asks the
+  server for it explicitly
 
 ### 📋 System Logs & Errors
-Real-time streaming logs from all server components with color-coded severity.
+Real-time streaming logs from all server components with color-coded severity,
+filterable by level, searchable, and exportable as CSV.
+
+---
+
+## 🧍 Player (`/player`)
+
+Two different things can talk to the agent, and the console header has a button for
+each:
+
+| | **OPEN PLAYER** (`/player`) | **WEB CLIENT** (`config.yaml → client_url`) |
+|---|---|---|
+| What it is | a plain page served by this server | the Unity WebGL build, published separately |
+| Has | text chat, push-to-talk, event marker, latency readout | the embodied 3D agent, gestures, emotions |
+| For | checking the pipeline works | what a participant actually uses |
+| Reaches the server at | `ws://localhost:8000` | `wss://…` only — needs a tunnel |
+
+`/player` is **not** a stand-in for the headset: it is a debugging surface. It connects
+as an ordinary device over `/ws/client/{device_id}`, so a full loop — someone speaks,
+the agent answers with voice, the researcher annotates from the console — can be
+exercised with nothing but a browser.
+
+Defaults to `web_panel_01` / `agent_alpha`; override with query parameters:
+
+```
+/player?device=web_panel_01&agent=agent_beta
+```
+
+Whatever you pass must exist in `config.yaml → devices` and `agents`, or the
+server rejects the commands. Point the console's **Device** picker at the same id
+to aim Speak This Text and gestures at it; **Copy pair info** yields the exact
+socket URL.
 
 ---
 
 ## ⚙️ Configuration
 
-### `config.yaml` - Experiment Setup
+### `config.yaml` — Experiment Setup
 
 The config file defines your experiment's structure. The LLM uses these as tool schemas, so it can trigger actions, emotions, and gaze targets autonomously.
 
@@ -240,9 +362,12 @@ custom_commands:
     description: "Agent spatial movement"
     values: ["move_closer", "move_farther", "move_left", "move_right", "reset_position"]
 
+  # One value until the client can swap the model. A single-value category is not
+  # a choice: the LLM is offered it but not required to set it, and WoZ Control
+  # renders no button row for it. Add a second value and both come back.
   avatar:
     description: "Change the agent's avatar appearance"
-    values: ["default", "male_casual", "female_formal", "robot"]
+    values: ["default"]
 
 # Experimental conditions (one-click presets)
 conditions:
@@ -258,9 +383,9 @@ conditions:
     voice: "Puck"
 ```
 
-> **💡 Tip:** Adding a new value to `custom_commands` automatically makes it available to the LLM as a tool call option - no code changes needed.
+> **💡 Tip:** Adding a new value to `custom_commands` automatically makes it available to the LLM as a tool call option — no code changes needed.
 
-### `profiles/*.yaml` - Agent Profiles
+### `profiles/*.yaml` — Agent Profiles
 
 Profiles define rich personas that can be applied to any agent at runtime. Each profile bundles identity, voice, personality, guardrails, and avatar into a single switchable unit.
 
@@ -298,11 +423,11 @@ guardrails:
 avatar: male_casual
 ```
 
-Drop new `.yaml` files into `profiles/` and they'll appear in the WoZ console Profiles tab automatically. The system prompt is auto-composed from all persona fields - researchers don't need to do manual prompt engineering.
+Drop new `.yaml` files into `profiles/` and they'll appear in the WoZ console Profiles tab automatically. The system prompt is auto-composed from all persona fields — researchers don't need to do manual prompt engineering.
 
 > **💡 Migration:** Legacy `conditions:` entries in `config.yaml` are auto-migrated to profiles at startup. You can safely remove the `conditions:` section and use profiles instead.
 
-### `scenarios/*.yaml` - Scripted Protocols
+### `scenarios/*.yaml` — Scripted Protocols
 
 Scenario files define step-by-step experiment procedures that researchers can follow in the WoZ console. Each step can optionally auto-apply a condition, execute an action, or log an event marker.
 
@@ -330,7 +455,12 @@ steps:
 
 Drop new `.yaml` files into `scenarios/` and they'll appear in the WoZ console automatically on the next server restart.
 
-### `.env` - API Keys
+### `.env` — API Keys
+
+Keys can also be set from the console's **API Key Store** tab, which applies them to
+the running providers at once and, on save, writes them to `provider_keys.yaml`
+(git-ignored) — encrypted when `OVARP_SECRET_KEY` is set. A key saved there wins over
+`.env` on the next boot: it is what the researcher set last.
 
 ```env
 OPENAI_API_KEY=sk-...
@@ -379,7 +509,12 @@ OpenVirtualAgentResearchPlatform-Server/
 │   └── casual_companion.yaml   # Gender-neutral companion profile
 │
 ├── src/
-│   ├── main.py                  # FastAPI app, routes, API endpoints
+│   ├── main.py                  # Bootstrap only: build, wire, mount routers
+│   │
+│   ├── api/
+│   │   ├── deps.py              # Console access token
+│   │   ├── websockets.py        # /ws/client/{id} and /ws/logs
+│   │   └── routers/             # One router per domain; add endpoints here
 │   │
 │   ├── core/
 │   │   ├── orchestrator.py      # AI pipeline: STT → LLM → TTS + per-agent state
@@ -389,6 +524,10 @@ OpenVirtualAgentResearchPlatform-Server/
 │   │   ├── profile_manager.py   # Agent profiles: load, compose, apply
 │   │   ├── session_manager.py   # Session lifecycle + event markers
 │   │   ├── scenario_runner.py   # YAML-driven experiment protocol engine
+│   │   ├── survey_manager.py    # Questionnaires with SUS and UEQ scoring
+│   │   ├── secrets.py           # Encrypts stored credentials at rest
+│   │   ├── key_store.py         # Provider keys the console can set at runtime
+│   │   ├── runtime.py           # Composition root the routers read from
 │   │   └── telemetry.py         # JSONL event capture & CSV export
 │   │
 │   ├── providers/
@@ -403,11 +542,13 @@ OpenVirtualAgentResearchPlatform-Server/
 │   │   └── ws_layer.py          # WebSocket transport
 │   │
 │   └── static/
-│       ├── index.html           # WoZ Console (5-tab single-page app)
-│       ├── OVARP-client.js        # Web client SDK
+│       ├── index.html           # WoZ Console (single-page app)
+│       ├── player.html          # Participant page served at /player
+│       ├── survey.html          # Participant questionnaire page
+│       ├── js/                  # Console behaviour as ES modules
+│       ├── sdk/OVARP-client.js  # Web client SDK
 │       ├── avatar.js            # 3D avatar engine (Three.js + VRM)
-│       └── models/              # VRM avatar models
-│           └── default_avatar.vrm
+│       └── models/              # VRM/GLB avatar models — ships empty, see above
 │
 ├── scripts/
 │   └── mock_xr_client.py       # ZMQ test client for development
@@ -426,10 +567,18 @@ OpenVirtualAgentResearchPlatform-Server/
 │
 ├── scenarios/                   # YAML experiment protocol scripts
 │   ├── pilot_emotion.yaml       # 5-step empathy study protocol
-│   └── usability_test.yaml      # 3-step usability testing protocol
+│   ├── usability_test.yaml      # 3-step usability testing protocol
+│   ├── researcher_usability.yaml # Facilitator walkthrough protocol
+│   └── latency_validation.yaml  # Text / mic / WoZ latency protocol
 │
 └── data/                        # Experiment data (JSONL + CSV)
 ```
+
+`venv/`, `logs/`, `data/sessions/`, `__pycache__/` and `.DS_Store` are generated
+locally and are **not** versioned. They live in `.gitignore`; if you ever see one
+staged, it was added before the rule existed — untrack it rather than committing
+it. Session telemetry under `data/` is research output: back it up outside the
+repository, because git is not keeping a copy.
 
 ---
 
@@ -442,11 +591,11 @@ Most alternative LLM services (Ollama, LM Studio, vLLM, LocalAI, text-generation
 1. Open the **LLM Playground** tab
 2. Click **➕ Register Custom Endpoint** below the voice picker
 3. Fill in:
-   - **Name** - a short identifier (e.g. `my-ollama`)
-   - **Base URL** - the endpoint URL (e.g. `http://localhost:11434/v1`)
-   - **API Key** - optional for local services
-   - **Model** - the model ID (e.g. `llama3.1`)
-   - **Type** - check LLM, TTS, or both
+   - **Name** — a short identifier (e.g. `my-ollama`)
+   - **Base URL** — the endpoint URL (e.g. `http://localhost:11434/v1`)
+   - **API Key** — optional for local services
+   - **Model** — the model ID (e.g. `llama3.1`)
+   - **Type** — check LLM, TTS, or both
 4. Click **🔗 Test** to verify connectivity, then **📝 Register**
 
 The provider immediately appears in the LLM dropdown and is persisted to `custom_providers.yaml` across restarts.
@@ -493,10 +642,19 @@ llm_providers = {
 
 ## 🧪 Running Tests
 
+Install `requirements_dev.txt` first, then:
+
 ```bash
-pytest tests/ -v
-# 129 tests across profiles, schemas, sessions, scenarios, XR telemetry, orchestrator, router, providers, and HTTP endpoints
+OVARP_TESTING=1 OPENAI_API_KEY=sk-dummy GEMINI_API_KEY=dummy pytest -q
+# 280 tests across profiles, schemas, sessions, scenarios, surveys, XR telemetry,
+# orchestrator, router, providers, the key store, security, and HTTP endpoints
 ```
+
+`OVARP_TESTING=1` skips the transport and provider bootstrap and serves a bare
+app, so no network call or real API key is involved. The dummy keys only satisfy
+the provider constructors.
+
+Lint with `ruff check src/ tests/`.
 
 ---
 
@@ -522,6 +680,10 @@ pytest tests/ -v
 | `POST` | `/api/session/resume` | Resume a paused session |
 | `POST` | `/api/session/end` | End the session and return data |
 | `POST` | `/api/session/marker` | Add an event marker |
+| `PATCH` | `/api/session/marker/{id}` | Reclassify a marker (category, label, notes) |
+| `DELETE` | `/api/session/marker/{id}` | Retract a marker |
+| `GET` | `/api/session/markers/presets` | List the marker presets from `config.yaml` |
+| `GET` | `/api/session/export/csv` | Download the session's markers as a flat CSV |
 | `GET` | `/api/scenarios` | List available experiment scenarios |
 | `POST` | `/api/scenarios/load` | Load and start a scenario |
 | `POST` | `/api/scenarios/advance` | Advance to next scenario step |
@@ -533,22 +695,56 @@ pytest tests/ -v
 | `POST` | `/api/providers/{name}/test` | Test a registered provider's connectivity |
 | `POST` | `/api/providers/test` | Test any endpoint URL before registering |
 | `POST` | `/api/xr/telemetry` | Ingest batch XR tracking frames |
-| `GET` | `/api/telemetry/export` | Export session telemetry as CSV |
+| `GET` | `/api/export` | Export the session JSONL as a structured CSV |
+| `GET` | `/api/avatars` | List avatar models present in `src/static/models/` |
+| `GET` | `/api/clients` | Live WebSocket client ids currently connected |
+| `GET` | `/api/latency/last` | Most recent STT/LLM/TTS pipeline timings |
+| `POST` | `/api/profiles/{id}/duplicate` | Copy a profile to a new id |
+| `POST` | `/api/session/markers/presets` | Add or update a marker preset |
+| `POST` | `/api/scenarios` | Create a protocol and persist it as YAML |
+| `GET` | `/api/health/providers` | Whether each provider has a usable credential |
+| `GET` | `/api/keys/status` | Where each provider credential lives (masked) |
+| `POST` | `/api/keys/update` | Apply a credential, optionally saving it |
+| `POST` | `/api/keys/persist` | Write the in-memory credentials to the key store |
+| `POST` | `/api/keys/reveal` | Return one credential in the clear, on request |
+| `GET` | `/api/surveys` | List the questionnaires in `surveys/` |
+| `POST` | `/api/surveys/response` | Record a participant's answers |
+| `GET` | `/api/surveys/responses` | Scored responses for the active session |
+| `GET` | `/api/server/info` | Scheme-aware public and LAN WebSocket URLs |
+
+---
+
+## ⏱️ Latency Measurement
+
+Every turn records four timings: `stt_ms`, `llm_ms`, `tts_ms` and `total_ms`.
+
+They cannot all be published at once. `llm_reply` is broadcast as soon as the
+model answers, so it carries only `stt_ms` and `llm_ms` — `tts_ms` does not
+exist until the audio stage finishes. The complete figures are therefore
+published afterwards as a separate `system` / `latency` command, which the
+console uses to finish the timing line on the reply it already drew.
+
+The same complete record is written to the session JSONL as an `event: latency`
+entry and flattened into the four rightmost columns of the CSV export, so the
+`latency_validation` protocol is analysable in SPSS/R without post-processing.
+
+SDK clients receive it through the `onLatency` callback.
 
 ---
 
 ## 👥 Authors
 
-**Author:** Alexander Barquero Elizondo, Ph.D. - Universidad de Costa Rica, ECCI/CITIC
+| Name | Affiliation | Email |
+|------|-------------|-------|
+| **Alexander Barquero Elizondo*** | AURAxLAB / ECCI / CITIC, Universidad de Costa Rica | alexander.barqueroelizondo@ucr.ac.cr |
+| Briam David Mora Villalobos | Spatial Labs, Universidad Cenfotec | bmorav@ucenfotec.ac.cr |
+| Stephanie Isabel Martinez Iglesias | Spatial Labs, Universidad Cenfotec | smartinezi@ucenfotec.ac.cr |
+| Rodrigo L. Calvo | Ruiz HCI Lab, University of Florida | rodrigo.calvo@ufl.edu |
 
-**Collaborators:**
-- Briam Mora Villalobos - Spatial Lab, Universidad Cenfotec
-- Stephanie Isabel Martinez Iglesias - Spatial Lab, Universidad Cenfotec
-- Rodrigo L. Calvo - University of Florida
+*Corresponding author.
 
-Companion Unity XR reference clients: [Meta Quest 3 (VR)](https://github.com/SpatialLab-UCENFOTEC/OVARP-UnityMetaQuestClient) · [XREAL glasses (AR)](https://github.com/SpatialLab-UCENFOTEC/OVARP-UnityXRealClient)
-
+---
 
 ## 📜 License
 
-[MIT License](LICENSE) © 2026 Alexander Barquero Elizondo
+[MIT License](LICENSE) © 2026 [AURAxLab](https://github.com/AURAxLab)

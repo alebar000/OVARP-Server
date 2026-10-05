@@ -1,11 +1,11 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Scenario Runner
+Open Virtual Agent Research Platform (OVARP) — Scenario Runner
 
 Manages scripted experiment protocols. Scenarios are YAML-defined sequences
 of steps that guide researchers through structured experiment procedures.
 Each step can auto-apply conditions, execute actions, and log event markers.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 import yaml
+
+from src.core.identifiers import safe_path
 
 std_log = logging.getLogger("OVARP.scenario")
 
@@ -80,22 +82,28 @@ class ScenarioRunner:
                     data = yaml.safe_load(f)
                 scenario = Scenario(**data)
                 self._scenarios[scenario.id] = scenario
-                std_log.info(f" Loaded scenario: {scenario.name} ({len(scenario.steps)} steps)")
+                std_log.info(f"📋 Loaded scenario: {scenario.name} ({len(scenario.steps)} steps)")
             except Exception as e:
                 std_log.error(f"Failed to load scenario {yaml_file}: {e}")
 
         return self._scenarios
 
-    def add_scenario(self, scenario: Scenario, save_to_disk: bool = True, directory: str = "scenarios") -> Scenario:
-        """Register a scenario and optionally save it as YAML to disk."""
+    def add_scenario(self, scenario: Scenario, save_to_disk: bool = True,
+                     directory: str = "scenarios") -> Scenario:
+        """Register a scenario and, by default, save it as YAML to disk.
+
+        Persisting is what lets a protocol authored in the console survive a
+        restart, the same bargain profiles make.
+        """
         self._scenarios[scenario.id] = scenario
         if save_to_disk:
             scenario_dir = Path(directory)
             scenario_dir.mkdir(parents=True, exist_ok=True)
-            yaml_path = scenario_dir / f"{scenario.id}.yaml"
+            yaml_path = safe_path(scenario_dir, scenario.id)
             with open(yaml_path, "w", encoding="utf-8") as f:
-                yaml.dump(scenario.model_dump(exclude_none=True), f, sort_keys=False, allow_unicode=True)
-            std_log.info(f" Saved scenario {scenario.id} to {yaml_path}")
+                yaml.dump(scenario.model_dump(exclude_none=True), f,
+                          sort_keys=False, allow_unicode=True)
+            std_log.info(f"📋 Saved scenario {scenario.id} to {yaml_path}")
         return scenario
 
     def list_scenarios(self) -> list[dict]:
@@ -118,7 +126,7 @@ class ScenarioRunner:
         self._active_scenario = self._scenarios[scenario_id]
         self._current_step_index = 0
         step = self.current_step
-        std_log.info(f" Scenario STARTED: {self._active_scenario.name} | step 1/{len(self._active_scenario.steps)}")
+        std_log.info(f"🎬 Scenario STARTED: {self._active_scenario.name} | step 1/{len(self._active_scenario.steps)}")
         return step
 
     def advance(self) -> Optional[ScenarioStep]:
@@ -129,7 +137,7 @@ class ScenarioRunner:
         self._current_step_index += 1
 
         if self._current_step_index >= len(self._active_scenario.steps):
-            std_log.info(f" Scenario COMPLETED: {self._active_scenario.name}")
+            std_log.info(f"✅ Scenario COMPLETED: {self._active_scenario.name}")
             completed = self._active_scenario
             self._active_scenario = None
             self._current_step_index = -1

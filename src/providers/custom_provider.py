@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Custom Provider
+Open Virtual Agent Research Platform (OVARP) — Custom Provider
 
 Generic provider implementations for any OpenAI-compatible API endpoint.
 Lets users register Ollama, LM Studio, vLLM, LocalAI, or any custom
 service that exposes an OpenAI-compatible ``/v1/chat/completions`` or
 ``/v1/audio/speech`` endpoint.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -39,7 +39,7 @@ class CustomLLMProvider(BaseLLMProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._client = None
-        std_log.info(f"Custom LLM '{name}' registered | url={self.base_url} model={model}")
+        std_log.info(f"🔌 Custom LLM '{name}' registered | url={self.base_url} model={model}")
 
     @property
     def client(self) -> AsyncOpenAI:
@@ -67,7 +67,10 @@ class CustomLLMProvider(BaseLLMProvider):
                 "enum": category.values,
                 "description": category.description
             }
-            required.append(cat_name)
+            # A category with a single value leaves the model nothing to decide, so
+            # it is offered but not demanded (same rule as the OpenAI and Gemini adapters).
+            if len(category.values) > 1:
+                required.append(cat_name)
 
         properties["spoken_response"] = {
             "type": "string",
@@ -104,7 +107,7 @@ class CustomLLMProvider(BaseLLMProvider):
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            std_log.error(f"Custom LLM '{self.name}': Streaming failed | {type(e).__name__}: {e}")
+            std_log.error(f"❌ Custom LLM '{self.name}': Streaming failed | {type(e).__name__}: {e}")
             yield f"[Error: {e}]"
 
     async def generate_response_with_actions(
@@ -148,12 +151,12 @@ class CustomLLMProvider(BaseLLMProvider):
                             args.pop("spoken_response", None)
                         actions = args
 
-            std_log.info(f"Custom LLM '{self.name}': Response (tools) | text=\"{spoken_text[:60]}\"actions={actions}")
+            std_log.info(f"✅ Custom LLM '{self.name}': Response (tools) | text=\"{spoken_text[:60]}\" actions={actions}")
             return spoken_text, actions
 
         except Exception as tool_err:
             std_log.warning(
-                f" Custom LLM '{self.name}': Function calling not supported, falling back to plain chat | {tool_err}"
+                f"⚠️ Custom LLM '{self.name}': Function calling not supported, falling back to plain chat | {tool_err}"
             )
 
         # Attempt 2: plain completion without tools
@@ -163,11 +166,11 @@ class CustomLLMProvider(BaseLLMProvider):
                 messages=messages
             )
             spoken_text = response.choices[0].message.content or ""
-            std_log.info(f"Custom LLM '{self.name}': Response (plain) | text=\"{spoken_text[:60]}\"")
+            std_log.info(f"✅ Custom LLM '{self.name}': Response (plain) | text=\"{spoken_text[:60]}\"")
             return spoken_text, {}
 
         except Exception as e:
-            std_log.error(f"Custom LLM '{self.name}': Plain completion also failed | {type(e).__name__}: {e}")
+            std_log.error(f"❌ Custom LLM '{self.name}': Plain completion also failed | {type(e).__name__}: {e}")
             return f"Error from {self.name}: {e}", {}
 
 
@@ -186,7 +189,7 @@ class CustomTTSProvider(BaseTTSProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._client = None
-        std_log.info(f"Custom TTS '{name}' registered | url={self.base_url} model={model}")
+        std_log.info(f"🔌 Custom TTS '{name}' registered | url={self.base_url} model={model}")
 
     @property
     def client(self) -> AsyncOpenAI:
@@ -202,7 +205,7 @@ class CustomTTSProvider(BaseTTSProvider):
         self._client = value
 
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
-        std_log.info(f"Custom TTS '{self.name}': Synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
+        std_log.info(f"🔊 Custom TTS '{self.name}': Synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
         try:
             audio_response = await self.client.audio.speech.create(
                 model=self.model,
@@ -213,14 +216,14 @@ class CustomTTSProvider(BaseTTSProvider):
 
             audio_bytes = audio_response.content
             total_size = len(audio_bytes)
-            std_log.info(f"Custom TTS '{self.name}': Audio received | size={total_size} bytes ({total_size // 1024}KB)")
+            std_log.info(f"✅ Custom TTS '{self.name}': Audio received | size={total_size} bytes ({total_size // 1024}KB)")
 
             chunk_size = 32 * 1024
             for i in range(0, total_size, chunk_size):
                 yield audio_bytes[i:i + chunk_size]
 
         except Exception as e:
-            std_log.error(f"Custom TTS '{self.name}': Synthesis failed | {type(e).__name__}: {e}")
+            std_log.error(f"❌ Custom TTS '{self.name}': Synthesis failed | {type(e).__name__}: {e}")
 
 
 async def test_custom_endpoint(base_url: str, api_key: str = "", model: str = "") -> dict:
@@ -237,7 +240,7 @@ async def test_custom_endpoint(base_url: str, api_key: str = "", model: str = ""
         model_ids = [m.id for m in models.data[:5]]
         return {"ok": True, "detail": f"Connected. Available models: {', '.join(model_ids)}"}
     except Exception as model_err:
-        std_log.warning(f"/models endpoint failed for {base_url}: {model_err}")
+        std_log.warning(f"⚠️ /models endpoint failed for {base_url}: {model_err}")
 
     # Fall back to a minimal completion to test reachability
     if model:

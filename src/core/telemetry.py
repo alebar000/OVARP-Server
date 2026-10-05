@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Telemetry Logger
+Open Virtual Agent Research Platform (OVARP) — Telemetry Logger
 
 Handles structured logging of all interactions for experimental
 reproducibility. Events are recorded in JSONL format with high-precision
@@ -10,7 +10,7 @@ Now supports session-aware logging: when an experiment session is active,
 every log entry includes participant_id and session_id. Event markers
 are logged as distinct entries for post-hoc analysis.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -80,8 +80,39 @@ class TelemetryLogger:
             **ctx
         )
 
-    def log_marker(self, label: str, metadata: dict = None, marker_id: str = None, category: str = None, notes: str = None):
-        """Log an event marker as a distinct telemetry entry."""
+    def log_inbound(self, command: BaseCommand):
+        """Record a request a client sent to the server (speech, typed text, or
+        operator-injected speech) before the pipeline handles it.
+
+        Outbound traffic is logged in ``log_interaction``; without this entry, a
+        typed turn would be visible in the record only through its reply. The
+        participant's raw audio is not stored: an ``audio_base64`` payload is
+        replaced by its size, and the transcript is recorded when STT returns it.
+        """
+        ctx = self._get_session_context()
+        sub = dict(command.subcommand or {})
+        if "audio_base64" in sub:
+            encoded = sub.pop("audio_base64") or ""
+            sub["audio_bytes"] = len(encoded) * 3 // 4
+        self.file_logger.info(
+            event="inbound",
+            host_timestamp=time.time(),
+            sender=command.sender,
+            target_device=command.target_device,
+            target_agent=command.target_agent,
+            command_type=command.command_type,
+            command=command.command,
+            subcommand=sub,
+            **ctx
+        )
+
+    def log_marker(self, label: str, metadata: dict = None,
+                   marker_id: str = None, category: str = None):
+        """Log an event marker as a distinct telemetry entry.
+
+        ``marker_id`` is the marker's stable id in the session, so later
+        ``marker_amended`` / ``marker_deleted`` entries can be joined to this one.
+        """
         ctx = self._get_session_context()
         self.file_logger.info(
             event="marker",
@@ -89,61 +120,55 @@ class TelemetryLogger:
             marker_id=marker_id,
             label=label,
             category=category,
-            notes=notes,
             marker_metadata=metadata,
             **ctx
         )
 
-    def log_marker_update(self, marker_id: str, details: dict):
-        """Log a marker update event and rewrite marker record in session JSONL in real time."""
+    def log_marker_amendment(self, marker_id: str, before: dict, after: dict):
+        """Record a marker correction without rewriting what was originally logged.
+
+        The session JSONL is append-only, so the first ``marker`` entry stays as
+        captured and this adds the diff on top. The pair is what makes an edited
+        marker auditable rather than just changed.
+        """
         ctx = self._get_session_context()
         self.file_logger.info(
-            event="marker_updated",
+            event="marker_amended",
             host_timestamp=time.time(),
             marker_id=marker_id,
-            updated_details=details,
+            amended_from=before,
+            amended_to=after,
             **ctx
         )
-        if self.jsonl_path.exists():
-            try:
-                lines = []
-                with open(self.jsonl_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
 
-                new_lines = []
-                marker_count = 0
-                for line in lines:
-                    if not line.strip():
-                        continue
-                    try:
-                        record = json.loads(line)
-                        if record.get("event") == "marker":
-                            match = (
-                                record.get("marker_id") == marker_id or
-                                record.get("id") == marker_id or
-                                (marker_id.isdigit() and int(marker_id) == marker_count)
-                            )
-                            if match:
-                                for k, v in details.items():
-                                    if k == "metadata":
-                                        record["marker_metadata"] = v
-                                    elif k == "label":
-                                        record["label"] = v
-                                    elif k == "category":
-                                        record["category"] = v
-                                    elif k == "notes":
-                                        record["notes"] = v
-                                    else:
-                                        record[k] = v
-                            marker_count += 1
-                        new_lines.append(json.dumps(record) + "\n")
-                    except json.JSONDecodeError:
-                        new_lines.append(line)
+    def log_marker_deleted(self, marker_id: str, label: str):
+        """Record that a marker was retracted, keeping the original entry intact."""
+        ctx = self._get_session_context()
+        self.file_logger.info(
+            event="marker_deleted",
+            host_timestamp=time.time(),
+            marker_id=marker_id,
+            label=label,
+            **ctx
+        )
 
-                with open(self.jsonl_path, "w", encoding="utf-8") as f:
-                    f.writelines(new_lines)
-            except Exception as e:
-                self.console_logger.error("Failed to update marker in JSONL log file", error=str(e))
+    def log_survey_response(self, survey_id: str, participant_id: str,
+                            answers: dict, score: dict):
+        """Record a completed questionnaire alongside the interaction log.
+
+        Keeping responses in the same JSONL as the session means the scores line
+        up with the markers and latencies for that participant without a join.
+        """
+        ctx = self._get_session_context()
+        ctx["participant_id"] = participant_id or ctx.get("participant_id", "")
+        self.file_logger.info(
+            event="survey_response",
+            host_timestamp=time.time(),
+            survey_id=survey_id,
+            survey_answers=answers,
+            survey_score=score,
+            **ctx
+        )
 
     def log_latency(self, latency: dict):
         """Log pipeline latency metrics."""
@@ -193,7 +218,10 @@ class TelemetryLogger:
                     "participant_id", "experiment_session_id",
                     "sender", "target_device", "target_agent",
                     "command_type", "command", "subcommand_json",
-                    "marker_id", "marker_label", "marker_category", "marker_notes", "marker_metadata"
+                    "marker_label", "marker_metadata",
+                    "marker_id", "marker_amended_from", "marker_amended_to",
+                    "survey_id", "survey_score", "survey_answers",
+                    "stt_ms", "llm_ms", "tts_ms", "total_ms"
                 ])
 
                 for line in f_in:
@@ -213,11 +241,18 @@ class TelemetryLogger:
                         data.get("command_type", ""),
                         data.get("command", ""),
                         json.dumps(data.get("subcommand", {})),
-                        data.get("marker_id", ""),
                         data.get("label", ""),
-                        data.get("category", ""),
-                        data.get("notes", ""),
                         json.dumps(data.get("marker_metadata", {})),
+                        data.get("marker_id", ""),
+                        json.dumps(data.get("amended_from", {})) if data.get("amended_from") else "",
+                        json.dumps(data.get("amended_to", {})) if data.get("amended_to") else "",
+                        data.get("survey_id", ""),
+                        json.dumps(data.get("survey_score", {})) if data.get("survey_score") else "",
+                        json.dumps(data.get("survey_answers", {})) if data.get("survey_answers") else "",
+                        data.get("stt_ms", ""),
+                        data.get("llm_ms", ""),
+                        data.get("tts_ms", ""),
+                        data.get("total_ms", ""),
                     ])
 
             self.console_logger.info("Telemetry Exported successfully", csv_file=str(csv_path))
@@ -227,4 +262,3 @@ class TelemetryLogger:
             return None
 
 telemetry = TelemetryLogger()
-

@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Command Router
+Open Virtual Agent Research Platform (OVARP) — Command Router
 
 Receives raw JSON messages from all transports, validates them against
 the experiment schema, logs them via the telemetry module, and dispatches
 them to the appropriate handler (orchestrator for AI interactions, or
 broadcast for direct commands). Acts as the central message bus.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -51,14 +51,14 @@ class CommandRouter:
         """
         try:
             command = BaseCommand.from_json(raw_message)
-            std_log.info(f" Router: Valid command received | type={command.command_type} cmd={command.command} sender={command.sender}")
+            std_log.info(f"✅ Router: Valid command received | type={command.command_type} cmd={command.command} sender={command.sender}")
             await self.route_command(command)
             
         except ValidationError as e:
-            std_log.error(f" Router: Invalid command schema | error={str(e)[:200]}")
+            std_log.error(f"❌ Router: Invalid command schema | error={str(e)[:200]}")
             logger.error("Invalid command schema received", error=str(e), raw=raw_message)
         except Exception as e:
-            std_log.error(f" Router: Unexpected error processing message | error={str(e)}")
+            std_log.error(f"❌ Router: Unexpected error processing message | error={str(e)}")
             logger.error("Error processing incoming message", error=str(e), raw=raw_message)
             
     async def route_command(self, command: BaseCommand):
@@ -67,6 +67,7 @@ class CommandRouter:
         """
         # If the command is an audio blob sent from a client, intercept it and route to the AI Orchestrator
         if command.command_type == "audio" and command.command == "stt_request":
+            telemetry.log_inbound(command)
             if self._orchestrator and command.subcommand and "audio_base64" in command.subcommand:
                 try:
                     audio_bytes = base64.b64decode(command.subcommand["audio_base64"])
@@ -84,6 +85,7 @@ class CommandRouter:
             
         # If it's a direct text message intended for the AI
         if command.command_type == "message" and command.command == "llm_request":
+             telemetry.log_inbound(command)
              if self._orchestrator and command.subcommand and "text" in command.subcommand:
                  # Use 'all' as target so replies reach all connected clients including the WoZ console
                  reply_target = command.target_device if command.target_device != "all" else command.sender
@@ -91,7 +93,7 @@ class CommandRouter:
                  valid_devices = [d.id for d in config_manager.config.devices] + ["all"]
                  if reply_target not in valid_devices:
                      reply_target = "all"
-                 std_log.info(f" Router: Dispatching to Orchestrator | text=\"{command.subcommand['text'][:100]}\" | reply_target={reply_target}")
+                 std_log.info(f"🧠 Router: Dispatching to Orchestrator | text=\"{command.subcommand['text'][:100]}\" | reply_target={reply_target}")
                  asyncio.create_task(
                      self._orchestrator.process_text_interaction(
                          text=command.subcommand["text"],
@@ -100,13 +102,14 @@ class CommandRouter:
                      )
                  )
              else:
-                 std_log.warning(f" Router: llm_request received but no orchestrator or missing text")
+                 std_log.warning(f"⚠️ Router: llm_request received but no orchestrator or missing text")
              return
 
         # If it's a researcher-injected message that should speak via TTS (bypasses LLM entirely)
         if command.command_type == "message" and command.command == "direct_tts":
+            telemetry.log_inbound(command)
             if self._orchestrator and command.subcommand and "text" in command.subcommand:
-                std_log.info(f" Router: Direct TTS request | text=\"{command.subcommand['text'][:100]}\" | target={command.target_device}")
+                std_log.info(f"🎤 Router: Direct TTS request | text=\"{command.subcommand['text'][:100]}\" | target={command.target_device}")
                 asyncio.create_task(
                     self._orchestrator.process_direct_tts(
                         text=command.subcommand["text"],
@@ -115,7 +118,7 @@ class CommandRouter:
                     )
                 )
             else:
-                std_log.warning(f" Router: direct_tts received but no orchestrator or missing text")
+                std_log.warning(f"⚠️ Router: direct_tts received but no orchestrator or missing text")
             return
 
         # Programmatic event marker: any device or agent can fire a marker over the command bus
@@ -128,9 +131,9 @@ class CommandRouter:
                 meta["source"] = command.sender
                 try:
                     from src.core.session_manager import session_manager
-                    session_manager.add_marker(label, meta)
-                    telemetry.log_marker(label, meta)
-                    std_log.info(f" Router: Programmatic marker logged | label=\"{label}\" | sender={command.sender}")
+                    marker = session_manager.add_marker(label, meta)
+                    telemetry.log_marker(label, meta, marker_id=marker.id)
+                    std_log.info(f"📌 Router: Programmatic marker logged | label=\"{label}\" | sender={command.sender}")
                     # Broadcast confirmation to all clients so WoZ console updates live
                     confirm = BaseCommand(
                         sender="server_orchestrator",
@@ -142,9 +145,9 @@ class CommandRouter:
                     )
                     await self.dispatch_outbound(confirm)
                 except ValueError as e:
-                    std_log.warning(f" Router: Marker skipped (no active session) | label=\"{label}\"")
+                    std_log.warning(f"⚠️ Router: Marker skipped (no active session) | label=\"{label}\"")
             else:
-                std_log.warning(f" Router: log_marker received but missing 'label' in subcommand")
+                std_log.warning(f"⚠️ Router: log_marker received but missing 'label' in subcommand")
             return
              
         # Otherwise (normal WoZ commands, TTS chunks returning, agent actions), dispatch them
@@ -153,7 +156,7 @@ class CommandRouter:
     async def dispatch_outbound(self, command: BaseCommand):
         """Funnels a validated command down to all active transport layers using targeted messaging."""
         telemetry.log_interaction(command)
-        std_log.info(f" Router: Dispatching | type={command.command_type} cmd={command.command} target={command.target_device} to {len(self._transports)} transports")
+        std_log.info(f"📡 Router: Dispatching | type={command.command_type} cmd={command.command} target={command.target_device} to {len(self._transports)} transports")
         
         json_payload = command.to_json()
         

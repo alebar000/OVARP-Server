@@ -1,12 +1,12 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Provider Base Classes
+Open Virtual Agent Research Platform (OVARP) — Provider Base Classes
 
 Defines abstract base classes for the three AI provider roles:
 ``BaseSTTProvider`` (speech-to-text), ``BaseLLMProvider`` (language model),
 and ``BaseTTSProvider`` (text-to-speech). All concrete providers must
 implement their respective interfaces.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -48,6 +48,11 @@ class BaseTTSProvider(ABC):
     Abstract Base Class for Text-To-Speech Providers.
     Takes text and returns a stream of audio chunks to be piped into the XR client via ZMQ.
     """
+
+    # Voice the provider synthesizes with. Concrete providers assign it in
+    # __init__; the orchestrator swaps it per agent before each synthesis.
+    voice: str = ""
+
     @abstractmethod
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
         """Convert text into an asynchronous stream of binary audio chunks."""

@@ -1,5 +1,5 @@
 """
-Open Virtual Agent Research Platform (OVARP) - OpenAI Provider
+Open Virtual Agent Research Platform (OVARP) — OpenAI Provider
 
 Implements STT, LLM, and TTS providers using the OpenAI API:
 - ``OpenAISTTProvider``: Whisper-based speech-to-text transcription.
@@ -7,7 +7,7 @@ Implements STT, LLM, and TTS providers using the OpenAI API:
   for agent actions (emotions, gestures, gaze).
 - ``OpenAITTSProvider``: Text-to-speech synthesis using the ``tts-1`` model.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -44,44 +44,43 @@ class OpenAIClientSingleton:
 
     @classmethod
     def reset_client(cls):
-        """Reset cached AsyncOpenAI client instance so new API key takes effect."""
+        """Drop the cached client so the next call picks up a changed API key."""
         cls._client = None
-
 
 class OpenAISTTProvider(BaseSTTProvider):
     """Whisper transcription provider."""
-    def __init__(self, model_name: str = "whisper-1"):
-        self.model = model_name
+    def __init__(self, model_name: str = None):
+        self.model = model_name or os.getenv("OVARP_OPENAI_STT_MODEL", "whisper-1")
 
     @property
-    def client(self):
+    def client(self) -> AsyncOpenAI:
         return OpenAIClientSingleton.get_client()
 
     async def transcribe(self, audio_data: bytes) -> str:
         # Note: OpenAI expects a named file or a tuple (filename, file_content)
         # Ideally, we receive WAV or similar encoded binary audio from the XR client
         try:
-            std_log.info(f"STT: Starting transcription | audio_size={len(audio_data)} bytes")
+            std_log.info(f"🎤 STT: Starting transcription | audio_size={len(audio_data)} bytes")
             file_tuple = ("audio.wav", audio_data, "audio/wav")
             transcription = await self.client.audio.transcriptions.create(
                 model=self.model,
                 file=file_tuple,
                 response_format="text"
             )
-            std_log.info(f"STT: Transcription complete | text=\"{str(transcription)[:80]}\"")
+            std_log.info(f"✅ STT: Transcription complete | text=\"{str(transcription)[:80]}\"")
             return transcription
         except Exception as e:
-            std_log.error(f"STT: Transcription failed | {type(e).__name__}: {str(e)}")
+            std_log.error(f"❌ STT: Transcription failed | {type(e).__name__}: {str(e)}")
             logger.error("STT transcription failed", error=str(e))
             return ""
 
 class OpenAILLMProvider(BaseLLMProvider):
     """GPT-based Language Model using Tool Calling for dynamic configuration actions."""
-    def __init__(self, model_name: str = "gpt-4o"):
-        self.model = model_name
+    def __init__(self, model_name: str = None):
+        self.model = model_name or os.getenv("OVARP_OPENAI_LLM_MODEL", "gpt-4o")
 
     @property
-    def client(self):
+    def client(self) -> AsyncOpenAI:
         return OpenAIClientSingleton.get_client()
 
     def _build_tools_schema(self) -> list[Dict[str, Any]]:
@@ -98,8 +97,12 @@ class OpenAILLMProvider(BaseLLMProvider):
                 "enum": category.values,
                 "description": category.description
             }
-            # We enforce that the model always picks an action/emotion state
-            required.append(cat_name)
+            # A category with a single value leaves the model nothing to decide, so
+            # it is offered but not demanded. Requiring it made the model restate
+            # the only option on every turn, which the console then drew as a tag
+            # on every reply. Add a second value and it becomes required again.
+            if len(category.values) > 1:
+                required.append(cat_name)
 
         # Add spoken_response as a required param so the LLM always provides text
         properties["spoken_response"] = {
@@ -177,16 +180,16 @@ class OpenAILLMProvider(BaseLLMProvider):
 
 class OpenAITTSProvider(BaseTTSProvider):
     """OpenAI TTS streaming provider."""
-    def __init__(self, model_name: str = "tts-1", voice: str = "alloy"):
-        self.model = model_name
+    def __init__(self, model_name: str = None, voice: str = "alloy"):
+        self.model = model_name or os.getenv("OVARP_OPENAI_TTS_MODEL", "tts-1")
         self.voice = voice
 
     @property
-    def client(self):
+    def client(self) -> AsyncOpenAI:
         return OpenAIClientSingleton.get_client()
 
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
-        std_log.info(f"TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
+        std_log.info(f"🔊 TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
         audio_response = await self.client.audio.speech.create(
             model=self.model,
             voice=self.voice,
@@ -199,7 +202,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         # so 'async for' silently yields nothing. We read .content instead.
         audio_bytes = audio_response.content
         total_size = len(audio_bytes)
-        std_log.info(f"TTS: Audio received | size={total_size} bytes ({total_size//1024}KB)")
+        std_log.info(f"✅ TTS: Audio received | size={total_size} bytes ({total_size//1024}KB)")
         
         # Yield in chunks for streaming over ZMQ/WS
         chunk_size = 32 * 1024  # 32KB chunks
@@ -207,4 +210,4 @@ class OpenAITTSProvider(BaseTTSProvider):
         for i in range(0, total_size, chunk_size):
             chunk_count += 1
             yield audio_bytes[i:i + chunk_size]
-        std_log.info(f"TTS: Yielded {chunk_count} chunks to transport")
+        std_log.info(f"📤 TTS: Yielded {chunk_count} chunks to transport")

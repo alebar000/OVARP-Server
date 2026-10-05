@@ -1,11 +1,11 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Schema Validation Tests
+Open Virtual Agent Research Platform (OVARP) — Schema Validation Tests
 
 Unit tests for ``BaseCommand`` Pydantic schema validation. Verifies
 that valid commands are parsed correctly, unregistered devices are
 rejected, and invalid custom action values raise ``ValidationError``.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
@@ -108,21 +108,33 @@ def test_invalid_movement_rejected():
     assert "Invalid value" in str(exc_info.value)
     assert "teleport" in str(exc_info.value)
 
-def test_valid_avatar_command():
-    """Test that avatar change commands pass validation."""
-    valid_payload = {
-        "sender": "quest_vr_01",
-        "target_device": "all",
-        "target_agent": "agent_alpha",
-        "command_type": "action",
-        "command": "execute_state",
-        "subcommand": {
-            "avatar": "robot"
-        }
-    }
-    
-    cmd = BaseCommand(**valid_payload)
-    assert cmd.subcommand["avatar"] == "robot"
+def test_unknown_subcommand_category_is_rejected():
+    """An execute_state may only name declared categories, so a typo in a
+    category name is caught instead of being carried through untouched."""
+    with pytest.raises(ValidationError) as exc_info:
+        BaseCommand(
+            sender="quest_vr_01",
+            target_device="all",
+            target_agent="agent_alpha",
+            command_type="action",
+            command="execute_state",
+            subcommand={"not_a_category": "anything at all"},
+        )
+    assert "Unknown command category" in str(exc_info.value)
+
+
+def test_other_commands_keep_free_form_subcommands():
+    """Only execute_state is restricted to categories; other commands carry their
+    own fields (text, audio, labels)."""
+    cmd = BaseCommand(
+        sender="web_01",
+        target_device="all",
+        target_agent="agent_alpha",
+        command_type="message",
+        command="llm_request",
+        subcommand={"text": "hello"},
+    )
+    assert cmd.subcommand["text"] == "hello"
 
 def test_valid_new_animations():
     """Test that the newly added animation values pass validation."""

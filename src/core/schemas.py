@@ -1,16 +1,16 @@
 """
-Open Virtual Agent Research Platform (OVARP) - Command Schemas
+Open Virtual Agent Research Platform (OVARP) — Command Schemas
 
 Defines the ``BaseCommand`` Pydantic model that is the universal message
 structure flowing through ZMQ and WebSocket transports. Commands are
 validated dynamically against the current experiment configuration loaded
 from ``config.yaml``.
 
-Author: Alexander Barquero Elizondo, Ph.D. - UCR, ECCI/CITIC
+Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Dict, Optional, Literal
 import json
 
@@ -58,6 +58,26 @@ class BaseCommand(BaseModel):
                 if val not in valid_vals:
                     raise ValueError(f"Invalid value '{val}' for command category '{key}'. Must be in {valid_vals}")
         return v
+
+    @model_validator(mode="after")
+    def validate_state_categories(self):
+        """An ``execute_state`` may only name declared categories.
+
+        Values are checked per category above; this closes the other half, so a
+        misspelled category key is rejected instead of passing through unseen.
+        """
+        if self.command != "execute_state" or not self.subcommand:
+            return self
+        config = config_manager.config
+        if not config or not config.custom_commands:
+            return self
+        unknown = [k for k in self.subcommand if k not in config.custom_commands]
+        if unknown:
+            raise ValueError(
+                f"Unknown command category {unknown} in execute_state. "
+                f"Declared categories: {list(config.custom_commands)}"
+            )
+        return self
 
     def to_json(self) -> str:
         return self.model_dump_json()

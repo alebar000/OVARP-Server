@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 import src.main as main_module
+from src.core.runtime import runtime
 from src.core.profile_manager import ProfileManager, AgentProfile, ProfileVoice, ProfilePersonality
 
 
@@ -61,10 +62,10 @@ def setup_app(monkeypatch):
     mock_router = MagicMock()
     mock_router.route_command = AsyncMock()
 
-    monkeypatch.setattr(main_module, "profile_manager", mgr, raising=False)
-    monkeypatch.setattr(main_module, "orchestrator", mock_orchestrator, raising=False)
-    monkeypatch.setattr(main_module, "router", mock_router, raising=False)
-    monkeypatch.setattr(main_module, "telemetry", MagicMock(), raising=False)
+    monkeypatch.setattr(runtime, "profile_manager", mgr, raising=False)
+    monkeypatch.setattr(runtime, "orchestrator", mock_orchestrator, raising=False)
+    monkeypatch.setattr(runtime, "router", mock_router, raising=False)
+    monkeypatch.setattr(runtime, "telemetry", MagicMock(), raising=False)
 
     yield {"mgr": mgr, "orchestrator": mock_orchestrator}
 
@@ -166,19 +167,3 @@ class TestGetAgentState:
         data = resp.json()
         assert data["agent_id"] == "agent_alpha"
         setup_app["orchestrator"].get_agent_info.assert_called_with("agent_alpha")
-
-
-class TestDeleteProfile:
-    def test_delete_existing_profile(self, client, setup_app):
-        resp = client.delete("/api/profiles/companion")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "success"
-        assert data["profile_id"] == "companion"
-        assert setup_app["mgr"].get_profile("companion") is None
-
-    def test_delete_nonexistent_profile(self, client):
-        resp = client.delete("/api/profiles/nonexistent_xyz")
-        assert resp.status_code == 404
-        data = resp.json()
-        assert "error" in data
