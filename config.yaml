@@ -76,13 +76,14 @@ custom_commands:
       - "move_right"
       - "reset_position"
 
+  # One option until the Unity client can swap the model. A category with a single
+  # value is offered to the LLM but not required of it, so the model is not made
+  # to restate the only choice on every turn. Add the other models here as they
+  # are built and it becomes a real decision again.
   avatar:
     description: "Change the agent's avatar appearance"
     values:
       - "default"
-      - "male_casual"
-      - "female_formal"
-      - "robot"
 
 # Experimental Conditions
 # Each condition bundles a system prompt, avatar, and voice into a one-click preset.
