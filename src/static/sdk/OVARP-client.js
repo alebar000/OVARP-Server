@@ -26,7 +26,7 @@ export default class OVARPClient {
             onConnect: () => { },
             onDisconnect: () => { },
             onMessage: (msgSubcommand) => { }, // When the full text response is finalized
-            onMessageChunk: (chunkSubcommand) => { }, // Incremental delta while the reply streams in (Gemini-only; other providers only ever call onMessage)
+            onMessageChunk: (chunkSubcommand) => { }, // Incremental delta while the reply streams in (adapters with streaming; others only call onMessage)
             onAgentAction: (actionSubcommand) => { }, // When emotion/anim triggers
             onLog: (msg, type) => { }, // General SDK logs
             onTTSReady: (blobUrl) => { }, // When TTS audio blob is ready for playback

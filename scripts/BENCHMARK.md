@@ -37,10 +37,10 @@ python scripts/bench_latency.py \
   --out bench_results
 ```
 
-- `gemini:*` runs both modes (`full`, `sentence`). `openai:openai` runs only `full`,
-  because the OpenAI LLM provider has no `stream_reply`. That's expected, and the
-  paper says so.
-- 12 prompts × 10 reps × 2 modes = 240 turns per Gemini pair; 120 for the OpenAI pair.
+- Every pair runs both modes (`full`, `sentence`): all built-in LLM adapters stream.
+  The `full` mode hides that capability, so it measures the path an adapter without
+  streaming would take.
+- 12 prompts × 10 reps × 2 modes = 240 turns per pair.
 - The run shuffles prompt order and alternates which mode goes first (ABBA), so slow
   drift in provider latency doesn't favour either mode.
 - If you hit rate limits, raise `--gap` to 4. If time is short, run `--reps 5` now and

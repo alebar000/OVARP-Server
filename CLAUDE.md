@@ -207,7 +207,10 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
   `test_record_and_wire.py` pins that both paths produce identical output.
 - Model ids come from env vars with defaults: `OVARP_GEMINI_{LLM,STT,TTS}_MODEL` and
   `OVARP_OPENAI_{LLM,STT,TTS}_MODEL` (see `.env.example`).
-- Sentence-level path: gestures/emotion from `extract_actions` are dispatched the moment the
+- Sentence-level path: every built-in LLM adapter offers `stream_reply` + `extract_actions`
+  (the OpenAI-compatible ones share `stream_chat_text` / `classify_actions` in
+  `openai_provider.py`); an adapter without them takes the full-reply path. Text is streamed
+  without tools, and gestures/emotion come from `extract_actions`, dispatched the moment the
   classification returns, concurrently with speech. A failed `stream_reply` raises; the
   orchestrator drains the sentences already queued and reports `pipeline_error`.
 - `/api/health/providers` checks **key presence, not connectivity**. Probing the providers for
@@ -238,7 +241,7 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
 
 ## Known state (v1.0.0)
 
-Tests: 346 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
+Tests: 355 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
 and the modules added recently; the older files still carry ~400 violations (whitespace, line
 length, `Optional[X]`), not gated in CI. New code in an older file matches that file's existing
 style rather than importing a second convention into it.

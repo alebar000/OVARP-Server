@@ -86,10 +86,10 @@ async def test_process_audio_interaction_pipeline(orchestrator, mock_stt, mock_l
 
 @pytest.fixture
 def mock_gemini_stream_llm():
-    """Stand-in for GeminiLLMProvider's streaming-only interface (stream_reply +
-    extract_actions). Deliberately NOT spec'd to BaseLLMProvider, which is exactly
-    why the orchestrator's hasattr(self.llm, "stream_reply") gate is Gemini-only:
-    a plain BaseLLMProvider mock (see mock_llm above) doesn't have this attribute."""
+    """Stand-in for an adapter with the optional streaming capability (stream_reply +
+    extract_actions). Deliberately NOT spec'd to BaseLLMProvider: the orchestrator's
+    hasattr(self.llm, "stream_reply") gate selects the sentence path only for adapters
+    that offer it, and a plain BaseLLMProvider mock (see mock_llm above) does not."""
     llm = MagicMock()
     llm.model = "gemini-test-model"
 

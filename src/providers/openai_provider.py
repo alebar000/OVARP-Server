@@ -74,6 +74,118 @@ class OpenAISTTProvider(BaseSTTProvider):
             logger.error("STT transcription failed", error=str(e))
             return ""
 
+# ---------------------------------------------------------------------------
+# Optional streaming capability, shared by every OpenAI-compatible adapter.
+#
+# The orchestrator probes for ``stream_reply`` / ``extract_actions``. With them it
+# speaks sentence by sentence while the reply is still being generated, and
+# classifies gestures and emotion in a separate call over the finished text, off
+# the audio path. Text is streamed without tools: a forced tool call would make
+# the model hold back its reply until the call's arguments are complete.
+# ---------------------------------------------------------------------------
+
+PLAIN_TEXT_OVERRIDE = (
+    "\nFor this reply, respond with plain spoken text only. Do not call any function or tool."
+)
+
+CLASSIFY_PROMPT = (
+    "You just replied with the following text to the user:\n\"{text}\"\n\n"
+    "Call update_agent_state to classify your emotional/physical state for that reply. "
+    "Do not repeat or alter the text."
+)
+
+NAMED_TOOL_CHOICE = {"type": "function", "function": {"name": "update_agent_state"}}
+
+
+def chat_messages(prompt: str, system_prompt: Optional[str], history: Optional[list],
+                  plain_text: bool = False) -> list[dict]:
+    """Messages for a chat completion. ``plain_text`` cancels, for this call only,
+    an instruction in the agent's prompt to always call ``update_agent_state``."""
+    messages = []
+    if system_prompt:
+        content = system_prompt + (PLAIN_TEXT_OVERRIDE if plain_text else "")
+        messages.append({"role": "system", "content": content})
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+def actions_only_tools() -> list[Dict[str, Any]]:
+    """The ``update_agent_state`` tool without ``spoken_response``: it classifies a
+    reply that already exists instead of asking the model to write it again."""
+    properties = {}
+    required = []
+    for cat_name, category in config_manager.config.custom_commands.items():
+        properties[cat_name] = {
+            "type": "string",
+            "enum": category.values,
+            "description": category.description,
+        }
+        # A single-value category is offered but not demanded (same rule as the
+        # full tool schema), so the model is never forced to restate it.
+        if len(category.values) > 1:
+            required.append(cat_name)
+    return [{
+        "type": "function",
+        "function": {
+            "name": "update_agent_state",
+            "description": (
+                "Classify the agent's state (emotion/action) for the reply you just gave."
+            ),
+            "parameters": {"type": "object", "properties": properties, "required": required},
+        },
+    }]
+
+
+async def stream_chat_text(client: AsyncOpenAI, model: str, prompt: str,
+                           system_prompt: Optional[str], history: Optional[list]
+                           ) -> AsyncGenerator[str, None]:
+    """Yield the reply's text as the endpoint generates it. Errors propagate, so
+    the orchestrator reports a ``pipeline_error`` instead of ending in silence."""
+    stream = await client.chat.completions.create(
+        model=model,
+        messages=chat_messages(prompt, system_prompt, history, plain_text=True),
+        stream=True,
+    )
+    async for chunk in stream:
+        if not chunk.choices:
+            continue  # e.g. a trailing usage-only chunk
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
+async def classify_actions(client: AsyncOpenAI, model: str, spoken_text: str,
+                           system_prompt: Optional[str], tool_choice: Any = None
+                           ) -> Dict[str, Any]:
+    """Lean follow-up call: the expressive state for a reply already spoken.
+
+    Returns ``{}`` when nothing is declared to classify. Raises on API errors so
+    each adapter decides how to degrade.
+    """
+    tools = actions_only_tools()
+    if not spoken_text or not tools[0]["function"]["parameters"]["properties"]:
+        return {}
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": CLASSIFY_PROMPT.format(text=spoken_text)})
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice or NAMED_TOOL_CHOICE,
+    )
+    message = response.choices[0].message
+    for tool_call in message.tool_calls or []:
+        if tool_call.function.name == "update_agent_state":
+            args = json.loads(tool_call.function.arguments or "{}")
+            args.pop("spoken_response", None)
+            return args
+    return {}
+
+
 class OpenAILLMProvider(BaseLLMProvider):
     """GPT-based Language Model using Tool Calling for dynamic configuration actions."""
     def __init__(self, model_name: str = None):
@@ -177,6 +289,27 @@ class OpenAILLMProvider(BaseLLMProvider):
                     actions = args
 
         return spoken_text, actions
+
+    async def stream_reply(self, prompt: str, system_prompt: Optional[str] = None,
+                           history: Optional[list] = None) -> AsyncGenerator[str, None]:
+        """Incremental text of the spoken reply (optional streaming capability)."""
+        std_log.info(f"🔄 OpenAI: Streaming text call | model={self.model} | prompt=\"{prompt[:80]}\"")
+        try:
+            async for delta in stream_chat_text(self.client, self.model, prompt,
+                                                system_prompt, history):
+                yield delta
+        except Exception as e:
+            std_log.error(f"❌ OpenAI: Streaming text call FAILED | {type(e).__name__}: {e}")
+            raise
+
+    async def extract_actions(self, spoken_text: str,
+                              system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Gestures and emotion for a reply that was already streamed."""
+        try:
+            return await classify_actions(self.client, self.model, spoken_text, system_prompt)
+        except Exception as e:
+            std_log.warning(f"⚠️ OpenAI: extract_actions call failed | {type(e).__name__}: {e}")
+            return {}
 
 class OpenAITTSProvider(BaseTTSProvider):
     """OpenAI TTS streaming provider."""

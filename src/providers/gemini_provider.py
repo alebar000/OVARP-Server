@@ -5,7 +5,8 @@ Implements LLM and TTS providers using the Google ``genai`` SDK:
 - ``GeminiLLMProvider``: Gemini chat completions with function calling for
   agent actions (emotions, gestures, gaze). Uses a shared singleton client.
   ``stream_reply`` + ``extract_actions`` add real incremental text streaming
-  (Gemini-only): forcing the actions tool call blocks streaming, so the spoken
+  (the optional capability, also offered by the OpenAI-compatible adapters):
+  forcing the actions tool call blocks streaming, so the spoken
   reply streams on its own and actions are classified in a lean follow-up call.
 - ``GeminiTTSProvider``: Text-to-speech synthesis using ``gemini-2.5-flash-tts``
   with configurable voice presets via the ``generate_content`` API.

@@ -469,7 +469,8 @@ class DialogOrchestrator:
             tts_pipeline: Optional[_TTSPipeline] = None
             actions_task: Optional[asyncio.Task] = None
             if hasattr(self.llm, "stream_reply"):
-                # Real text streaming (Gemini-only, see gemini_provider.py): the reply
+                # Real text streaming (every built-in adapter offers it; an adapter
+                # without it takes the full-reply path below): the reply
                 # streams to clients chunk by chunk as it's generated. Each completed
                 # sentence is handed to TTS immediately (_TTSPipeline) instead of
                 # waiting for the full text, and gesture/emotion classification

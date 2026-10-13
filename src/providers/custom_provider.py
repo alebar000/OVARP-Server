@@ -17,6 +17,7 @@ from openai import AsyncOpenAI
 from structlog import get_logger
 
 from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider
+from src.providers.openai_provider import classify_actions, stream_chat_text
 from src.core.config import config_manager
 
 logger = get_logger()
@@ -172,6 +173,40 @@ class CustomLLMProvider(BaseLLMProvider):
         except Exception as e:
             std_log.error(f"❌ Custom LLM '{self.name}': Plain completion also failed | {type(e).__name__}: {e}")
             return f"Error from {self.name}: {e}", {}
+
+    async def stream_reply(self, prompt: str, system_prompt: Optional[str] = None,
+                           history: Optional[list] = None) -> AsyncGenerator[str, None]:
+        """Incremental text of the spoken reply (optional streaming capability).
+
+        Streaming is part of the OpenAI chat protocol these servers implement. A
+        failure propagates, so the console shows it instead of a silent turn.
+        """
+        try:
+            async for delta in stream_chat_text(self.client, self.model, prompt,
+                                                system_prompt, history):
+                yield delta
+        except Exception as e:
+            std_log.error(f"❌ Custom LLM '{self.name}': Streaming failed | {type(e).__name__}: {e}")
+            raise
+
+    async def extract_actions(self, spoken_text: str,
+                              system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Gestures and emotion for a reply that was already streamed.
+
+        Servers differ in tool support: a named tool choice is tried first, then
+        ``required``. A model without function calling yields no actions, as in
+        ``generate_response_with_actions``.
+        """
+        for tool_choice in (None, "required"):
+            try:
+                return await classify_actions(self.client, self.model, spoken_text,
+                                              system_prompt, tool_choice=tool_choice)
+            except Exception as e:
+                std_log.warning(
+                    f"⚠️ Custom LLM '{self.name}': action classification failed "
+                    f"(tool_choice={tool_choice or 'named'}) | {type(e).__name__}: {e}"
+                )
+        return {}
 
 
 class CustomTTSProvider(BaseTTSProvider):

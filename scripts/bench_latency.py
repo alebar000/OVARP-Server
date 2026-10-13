@@ -16,7 +16,7 @@ Two scheduling modes are compared on the same provider pair:
                once (up to 3 in flight) and its audio is sent as soon as it is
                ready, while gesture/emotion classification runs off the audio
                path (``extract_actions``). Only for LLMs with ``stream_reply``
-               (currently Gemini).
+               (every built-in adapter).
 
 Metrics per turn (all ms, measured from the moment the turn is submitted):
   ttft_ms     time to first text chunk (sentence mode only)
