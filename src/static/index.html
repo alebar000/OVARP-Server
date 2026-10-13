@@ -2178,6 +2178,8 @@
         // The three pickers below each own one stage of the pipeline; this restates
         // the resulting combination in one line, which is the question a researcher
         // actually asks ("what is answering me right now?").
+        // The model id each LLM provider calls, as reported by /api/llm/config.
+        let llmModels = {};
         function updatePipelineBadges() {
             const value = (id) => document.getElementById(id)?.value || '';
             const set = (id, text) => {
@@ -2186,7 +2188,7 @@
             };
             const llm = value('llm-provider-select');
             set('llm-status-provider', llm.toUpperCase());
-            set('llm-status-model', MODEL_LABELS[llm] || (llm ? 'default model' : ''));
+            set('llm-status-model', llmModels[llm] || (llm ? 'default model' : ''));
 
             // A profile pins the agent's voice, and the picker does not follow it.
             // Reading the picker here is what made the badge say Puck while Kore
@@ -2215,12 +2217,6 @@
         }
         window.updatePipelineBadges = updatePipelineBadges;
 
-        // The server picks the exact model id from env vars; the console only
-        // knows the family, so it names that rather than inventing a version.
-        const MODEL_LABELS = {
-            openai: 'gpt-4o',
-            gemini: 'gemini-flash-latest',
-        };
 
         for (const id of ['llm-provider-select', 'tts-provider-select', 'tts-voice-select']) {
             document.getElementById(id)?.addEventListener('change', updatePipelineBadges);
@@ -2376,6 +2372,7 @@
                 // Additionally fetch LLM Config
                 const llmResp = await fetch('/api/llm/config');
                 const llmConfig = await llmResp.json();
+                llmModels = llmConfig.llm_models || {};
 
                 const pSelect = document.getElementById('llm-provider-select');
                 pSelect.innerHTML = '';  // Clear before populating to prevent duplicates

@@ -67,6 +67,11 @@ async def get_llm_config():
     return {
         "active_provider": orchestrator.active_llm_id,
         "available_providers": list(orchestrator.llm_providers.keys()),
+        # The model id each provider actually calls, so the console shows the
+        # running configuration rather than a guess.
+        "llm_models": {
+            pid: getattr(provider, "model", "") for pid, provider in orchestrator.llm_providers.items()
+        },
         "active_tts_provider": orchestrator.active_tts_id,
         "available_tts_providers": list(orchestrator.tts_providers.keys()),
         "active_stt_provider": orchestrator.active_stt_id,

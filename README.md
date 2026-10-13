@@ -467,6 +467,37 @@ OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=AIzaSy...
 ```
 
+### Default models
+
+The defaults are the cheapest current models that are good enough for a
+conversational agent, pinned by exact id. Each one can be changed in `.env`; pin
+the ids you use for a study, since a `-latest` alias can move between sessions.
+
+| Role | Gemini | OpenAI | Variable |
+|---|---|---|---|
+| LLM | `gemini-3.5-flash-lite` | `gpt-6-luna` | `OVARP_{GEMINI,OPENAI}_LLM_MODEL` |
+| Speech-to-text | `gemini-3.5-flash-lite` | `gpt-transcribe` | `OVARP_{GEMINI,OPENAI}_STT_MODEL` |
+| Text-to-speech | `gemini-3.8-flash-lite-tts` | `gpt-realtime-2.1-mini` | `OVARP_{GEMINI,OPENAI}_TTS_MODEL` |
+
+OpenAI LLM calls are sent with `reasoning_effort=none` (`OVARP_OPENAI_REASONING_EFFORT`),
+so a conversational turn does not wait for reasoning; leave it empty for models
+that do not accept the parameter. For a higher-quality voice, `gemini-3.8-flash-tts`
+is the step up from the lite TTS model.
+
+OpenAI's speech is produced through the Realtime API, which OpenAI names as the
+replacement for `tts-1` and `gpt-4o-mini-tts` (retired on 2027-01-06). A Realtime
+model is a conversational model, so OVARP instructs it to read the text verbatim and
+compares every utterance with the transcript of what it said; a difference is
+written to the session record as `TTS deviation`. Before relying on a voice in a
+study, check it with real API calls:
+
+```bash
+python scripts/check_tts_verbatim.py --tts openai,gemini --stt openai
+```
+
+It reads a fixed set of Spanish and English sentences with each voice, transcribes
+the audio with an independent speech-to-text model, and reports the word error rate.
+
 ---
 
 ## 📡 Transport Protocols

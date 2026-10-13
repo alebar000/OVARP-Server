@@ -87,8 +87,9 @@ async def test_openai_llm_provider_tool_calling(mock_openai_client, mock_config)
 @pytest.mark.asyncio
 async def test_openai_tts_provider_chunking(mock_openai_client):
     """Test that the TTS provider correctly retrieves audio and generators chunks."""
-    provider = OpenAITTSProvider()
-    
+    provider = OpenAITTSProvider(model_name="tts-1")  # speech endpoint, until its retirement
+    assert not provider.uses_realtime
+
     stream = provider.synthesize_stream("Hello")
     
     chunks = []

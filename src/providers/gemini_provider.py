@@ -8,8 +8,14 @@ Implements LLM and TTS providers using the Google ``genai`` SDK:
   (the optional capability, also offered by the OpenAI-compatible adapters):
   forcing the actions tool call blocks streaming, so the spoken
   reply streams on its own and actions are classified in a lean follow-up call.
-- ``GeminiTTSProvider``: Text-to-speech synthesis using ``gemini-2.5-flash-tts``
-  with configurable voice presets via the ``generate_content`` API.
+- ``GeminiTTSProvider``: text-to-speech with prebuilt voices. The Gemini 3.8 TTS
+  models are called through the Interactions API; earlier preview models through
+  ``generate_content``.
+
+Default models are the cheapest current ones that are good enough for a
+conversational agent (``gemini-3.5-flash-lite``, ``gemini-3.8-flash-lite-tts``).
+Each can be changed through its ``OVARP_GEMINI_*_MODEL`` variable.
+No sampling temperature is set: Google recommends the default for Gemini 3.
 
 Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
@@ -32,6 +38,13 @@ from src.core.config import config_manager
 
 logger = get_logger()
 std_log = logging.getLogger("OVARP.gemini")
+
+# Pinned ids, not "-latest" aliases: an alias can move to another model between
+# two sessions of the same study.
+DEFAULT_LLM_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_TTS_MODEL = "gemini-3.8-flash-lite-tts"
+# TTS models served through generate_content rather than the Interactions API.
+_GENERATE_CONTENT_TTS_PREFIXES = ("gemini-2", "gemini-3.1-flash-tts", "gemini-3-flash-tts")
 
 class GeminiClientSingleton:
     """Manages the shared Gemini client instance."""
@@ -75,7 +88,7 @@ class GeminiLLMProvider(BaseLLMProvider):
     def __init__(self, model_name: str = None):
         # A dated id goes stale: gemini-2.5-flash is already refused for new
         # accounts. The rolling alias keeps working; the env var is the override.
-        self.model = model_name or os.getenv("OVARP_GEMINI_LLM_MODEL", "gemini-flash-latest")
+        self.model = model_name or os.getenv("OVARP_GEMINI_LLM_MODEL", DEFAULT_LLM_MODEL)
 
     @property
     def client(self) -> genai.Client:
@@ -154,10 +167,7 @@ class GeminiLLMProvider(BaseLLMProvider):
 
         tools = self._build_tools_schema()
         
-        config_kwargs = {
-            "tools": tools,
-            "temperature": 0.7,
-        }
+        config_kwargs = {"tools": tools}
         if system_prompt:
              config_kwargs["system_instruction"] = system_prompt
         
@@ -300,7 +310,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 contents.append({"role": role, "parts": [{"text": msg["content"]}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
 
-        config_kwargs = {"temperature": 0.7}
+        config_kwargs = {}
         if system_prompt:
             config_kwargs["system_instruction"] = system_prompt + self._NO_FUNCTION_CALL_OVERRIDE
 
@@ -338,7 +348,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         if not tools[0]["function_declarations"][0]["parameters"]["properties"]:
             return {}
 
-        config_kwargs = {"tools": tools, "temperature": 0.3}
+        config_kwargs = {"tools": tools}
         if system_prompt:
             config_kwargs["system_instruction"] = system_prompt
 
@@ -395,7 +405,7 @@ class GeminiSTTProvider(BaseSTTProvider):
     """
 
     def __init__(self, model_name: str = None):
-        self.model = model_name or os.getenv("OVARP_GEMINI_STT_MODEL", "gemini-flash-latest")
+        self.model = model_name or os.getenv("OVARP_GEMINI_STT_MODEL", DEFAULT_LLM_MODEL)
 
     @property
     def client(self) -> genai.Client:
@@ -428,32 +438,47 @@ class GeminiSTTProvider(BaseSTTProvider):
 
 
 class GeminiTTSProvider(BaseTTSProvider):
-    """Gemini TTS provider using the genai SDK with generate_content + AUDIO modality.
+    """Gemini text-to-speech with a prebuilt voice.
 
-    Uses ``generate_content_stream`` instead of a single blocking ``generate_content``
-    call: on the preview TTS models, the response is generated and transferred
-    incrementally, so the full audio arrives measurably sooner than waiting for one
-    blocking call to return everything at once (measured 2026-08-31, same input text,
-    gemini-3.1-flash-tts-preview: 9.7s blocking vs 6.4s via the stream, first bytes at
-    0.9s). We still buffer chunks server-side before forwarding, so the exact WAV
-    ``data`` size is known upfront and the transport/wire format to the client is
-    unchanged; only the retrieval from the Gemini API is faster.
+    Gemini 3.8 TTS models are called through the Interactions API, which returns a
+    complete WAV (24 kHz, mono, 16-bit). Earlier preview models use
+    ``generate_content_stream`` with the AUDIO modality, which returns raw L16 PCM
+    that gets a WAV header here. Either way the audio is complete before it is
+    forwarded, so the exact WAV ``data`` size is known and the wire format to
+    clients is the same. A failed synthesis raises, so the console reports it
+    instead of the agent falling silent.
     """
 
     def __init__(self, model_name: str = None, voice: str = "Kore"):
-        self.model = model_name or os.getenv(
-            "OVARP_GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview"
-        )
+        self.model = model_name or os.getenv("OVARP_GEMINI_TTS_MODEL", DEFAULT_TTS_MODEL)
         self.voice = voice
 
     @property
     def client(self) -> genai.Client:
         return GeminiClientSingleton.get_client()
 
+    @property
+    def uses_interactions(self) -> bool:
+        return not self.model.startswith(_GENERATE_CONTENT_TTS_PREFIXES)
+
+    async def _synthesize_interactions(self, text: str) -> tuple[bytes, Optional[str]]:
+        interaction = await self.client.aio.interactions.create(
+            model=self.model,
+            input=text,
+            response_format={"type": "audio"},
+            generation_config={"speech_config": [{"voice": self.voice}]},
+        )
+        audio = getattr(interaction, "output_audio", None)
+        if audio is None or not audio.data:
+            return b"", None
+        data = audio.data
+        raw = base64.b64decode(data) if isinstance(data, str) else bytes(data)
+        return raw, audio.mime_type or "audio/wav"
+
     def _collect_stream(self, tts_prompt: str) -> tuple[bytes, Optional[str]]:
-        """Runs synchronously in a worker thread: consumes the streaming response
-        and returns the fully assembled audio bytes plus the mime type of the
-        first audio part seen."""
+        """generate_content path (preview models). Runs in a worker thread: consumes
+        the streaming response and returns the assembled audio bytes plus the mime
+        type of the first audio part seen."""
         audio_bytes = bytearray()
         mime_type = None
         stream = self.client.models.generate_content_stream(
@@ -487,41 +512,40 @@ class GeminiTTSProvider(BaseTTSProvider):
 
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:
         if not self.client:
-            std_log.error("❌ Gemini TTS: Client not initialized (missing API key)")
-            return
+            raise RuntimeError("Gemini TTS client not initialized (missing GEMINI_API_KEY)")
 
-        std_log.info(f"🔊 Gemini TTS: Starting synthesis | model={self.model} voice={self.voice} text=\"{text[:60]}\"")
-
+        std_log.info(
+            f"🔊 Gemini TTS: Starting synthesis | model={self.model} voice={self.voice} "
+            f"text=\"{text[:60]}\""
+        )
         try:
-            # The preview TTS model can sometimes fail if the prompt isn't clearly
-            # framed as a text-to-speech request. We wrap it slightly.
-            tts_prompt = f"Repeat exactly this text as audio: {text}"
-            audio_bytes, mime_type = await asyncio.to_thread(self._collect_stream, tts_prompt)
+            if self.uses_interactions:
+                audio_bytes, mime_type = await self._synthesize_interactions(text)
+            else:
+                # The preview models sometimes answer in text unless the request is
+                # framed as speech.
+                tts_prompt = f"Repeat exactly this text as audio: {text}"
+                audio_bytes, mime_type = await asyncio.to_thread(self._collect_stream, tts_prompt)
         except Exception as e:
             std_log.error(f"❌ Gemini TTS: API call failed | {type(e).__name__}: {str(e)}")
-            return
+            raise
 
         if not audio_bytes or not mime_type:
-            std_log.error("❌ Gemini TTS: Stream returned no audio data")
-            return
+            raise RuntimeError(f"Gemini TTS ({self.model}) returned no audio")
 
         total_size = len(audio_bytes)
-        std_log.info(f"✅ Gemini TTS: Audio received | size={total_size} bytes ({total_size//1024}KB) mime={mime_type}")
+        std_log.info(
+            f"✅ Gemini TTS: Audio received | size={total_size} bytes "
+            f"({total_size//1024}KB) mime={mime_type}"
+        )
 
-        # If it's pure L16 PCM without a RIFF header, we MUST prepend one so browsers
-        # can play it. Mime casing has varied between model versions ("audio/L16" vs
-        # "audio/l16"), so match case-insensitively.
+        # Raw L16 PCM needs a RIFF header so clients can play it. Mime casing has
+        # varied between model versions ("audio/L16" vs "audio/l16").
         if mime_type.lower().startswith("audio/l16") and not audio_bytes.startswith(b'RIFF'):
-            # Default for Gemini L16 is 24kHz, mono, 16-bit
-            wav_header = _create_wav_header(sample_rate=24000, num_channels=1, sample_width=2, data_size=total_size)
-            yield wav_header
+            yield _create_wav_header(sample_rate=24000, num_channels=1, sample_width=2,
+                                     data_size=total_size)
 
         # Yield in chunks for streaming over ZMQ/WS
-        chunk_size = 32 * 1024  # 32KB chunks
-        chunk_count = 0
+        chunk_size = 32 * 1024
         for i in range(0, total_size, chunk_size):
-            chunk_count += 1
             yield audio_bytes[i:i + chunk_size]
-
-        std_log.info(f"📤 Gemini TTS: Yielded {chunk_count} chunks to transport")
-

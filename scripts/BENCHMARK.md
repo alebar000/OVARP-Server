@@ -27,24 +27,32 @@ python scripts/bench_latency.py --mock --reps 2 --out bench_results
 You should get a summary table. In the `long` class, `sentence` should come out much
 lower than `full`. This step tests only the script, not the providers.
 
-## 3. The real run (about 40-60 min)
+## 3. The real run (about 30-40 min)
 
 ```bash
 python scripts/bench_latency.py \
-  --pairs gemini:gemini,gemini:openai,openai:openai \
-  --reps 10 --gap 2.0 --warmup 2 \
+  --pairs gemini:gemini,openai:gemini \
+  --reps 5 --gap 3 --warmup 2 \
   --notes "machine=<model>, network=<wired/campus>, location=<city>, date=<yyyy-mm-dd>" \
   --out bench_results
 ```
 
+- `LLM:TTS`. Both pairs use Gemini's voice, so the comparison covers both LLM vendors
+  without depending on an OpenAI voice model that is due for retirement (see CLAUDE.md).
 - Every pair runs both modes (`full`, `sentence`): all built-in LLM adapters stream.
   The `full` mode hides that capability, so it measures the path an adapter without
   streaming would take.
-- 12 prompts × 10 reps × 2 modes = 240 turns per pair.
+- 12 prompts × 5 reps × 2 modes = 120 turns per pair, 60 paired comparisons. The effect
+  being measured is seconds on long replies, so this is enough; with the default
+  (cheapest) models the whole run costs on the order of a dollar or two.
+- Run a short check first (`--classes short --reps 1 --warmup 1`): it confirms the keys,
+  the models and the rate limits for a few cents.
+- To check that a voice reads its text verbatim (it matters for OpenAI's Realtime voice), run
+  `python scripts/check_tts_verbatim.py --tts openai,gemini --stt openai`.
 - The run shuffles prompt order and alternates which mode goes first (ABBA), so slow
   drift in provider latency doesn't favour either mode.
-- If you hit rate limits, raise `--gap` to 4. If time is short, run `--reps 5` now and
-  more later. Runs can be merged.
+- If you hit rate limits, raise `--gap` to 5. A turn that fails is recorded as an error
+  and left out of the analysis; runs can be merged.
 
 ## 4. What to send back
 

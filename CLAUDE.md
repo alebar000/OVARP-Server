@@ -205,8 +205,27 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
 - Audio chunks are encoded with `schemas.encode_audio` (pybase64 when installed). It returns a
   `Base64Text`, which `BaseCommand.to_json` splices into the JSON instead of re-scanning it;
   `test_record_and_wire.py` pins that both paths produce identical output.
-- Model ids come from env vars with defaults: `OVARP_GEMINI_{LLM,STT,TTS}_MODEL` and
-  `OVARP_OPENAI_{LLM,STT,TTS}_MODEL` (see `.env.example`).
+- Model ids come from env vars with pinned defaults (`DEFAULT_*_MODEL` in each adapter):
+  `OVARP_GEMINI_{LLM,STT,TTS}_MODEL` and `OVARP_OPENAI_{LLM,STT,TTS}_MODEL` (see `.env.example`
+  and the README table). The defaults are the cheapest current models good enough for
+  conversation. Gemini 3.8 TTS goes through the Interactions API (`client.aio.interactions`,
+  google-genai >= 2.25); older preview TTS models through `generate_content`. No temperature is
+  set for Gemini (Google recommends the default for Gemini 3). OpenAI LLM calls carry
+  `reasoning_effort` from `OVARP_OPENAI_REASONING_EFFORT` (default `none`; on Chat Completions
+  the current models allow function calling only without reasoning).
+- **OpenAI TTS goes through the Realtime API** (`gpt-realtime-2.1-mini`), OpenAI's named
+  replacement for `tts-1` / `gpt-4o-mini-tts`, retired 2027-01-06 (those still work via the
+  speech endpoint by setting `OVARP_OPENAI_TTS_MODEL`). A Realtime model converses, so
+  `OpenAITTSProvider` sends `READER_INSTRUCTIONS` with an out-of-band response
+  (`conversation: "none"`), and compares the response's own transcript with the text: a
+  difference is logged as `TTS deviation` (session record + server log). Connections are pooled
+  per voice (a session's voice is fixed once it has spoken), one synthesis at a time each, and a
+  stale pooled connection is retried once on a fresh one. The Realtime API has no `nova`,
+  `onyx`, `fable`; they map to `marin`, `cedar`, `sage`. `scripts/check_tts_verbatim.py`
+  verifies verbatim reading with real calls and an independent STT. `whisper-1` is retired on
+  2027-02-26 (default is already `gpt-transcribe`).
+- TTS adapters raise on failure (no audio, API error); the orchestrator reports
+  `pipeline_error`. A silent TTS failure reads as the agent mumbling.
 - Sentence-level path: every built-in LLM adapter offers `stream_reply` + `extract_actions`
   (the OpenAI-compatible ones share `stream_chat_text` / `classify_actions` in
   `openai_provider.py`); an adapter without them takes the full-reply path. Text is streamed
@@ -241,7 +260,7 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
 
 ## Known state (v1.0.0)
 
-Tests: 355 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
+Tests: 372 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
 and the modules added recently; the older files still carry ~400 violations (whitespace, line
 length, `Optional[X]`), not gated in CI. New code in an older file matches that file's existing
 style rather than importing a second convention into it.

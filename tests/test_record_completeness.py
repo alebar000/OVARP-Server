@@ -238,7 +238,11 @@ class TestOpenAIModelsConfigurable:
         assert OpenAITTSProvider().model == "tts-x"
         assert OpenAISTTProvider().model == "stt-x"
 
-    def test_defaults_unchanged(self, monkeypatch):
-        from src.providers.openai_provider import OpenAILLMProvider
-        monkeypatch.delenv("OVARP_OPENAI_LLM_MODEL", raising=False)
-        assert OpenAILLMProvider().model == "gpt-4o"
+    def test_defaults_are_pinned_current_models(self, monkeypatch):
+        from src.providers.openai_provider import (
+            OpenAILLMProvider, OpenAISTTProvider, OpenAITTSProvider)
+        for var in ("LLM", "STT", "TTS"):
+            monkeypatch.delenv(f"OVARP_OPENAI_{var}_MODEL", raising=False)
+        assert OpenAILLMProvider().model == "gpt-6-luna"
+        assert OpenAISTTProvider().model == "gpt-transcribe"
+        assert OpenAITTSProvider().model == "gpt-realtime-2.1-mini"

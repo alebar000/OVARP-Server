@@ -144,11 +144,11 @@ tts:
     - { id: "ballad",  label: "Ballad",  gender: "masculine" }
     - { id: "coral",   label: "Coral",   gender: "feminine" }
     - { id: "echo",    label: "Echo",    gender: "masculine" }
-    - { id: "fable",   label: "Fable",   gender: "neutral" }
-    - { id: "nova",    label: "Nova",    gender: "feminine" }
-    - { id: "onyx",    label: "Onyx",    gender: "masculine" }
     - { id: "sage",    label: "Sage",    gender: "neutral" }
     - { id: "shimmer", label: "Shimmer", gender: "feminine" }
+    - { id: "verse",   label: "Verse",   gender: "masculine" }
+    - { id: "marin",   label: "Marin",   gender: "feminine" }
+    - { id: "cedar",   label: "Cedar",   gender: "masculine" }
   gemini:
     - { id: "Kore",    label: "Kore",    gender: "feminine" }
     - { id: "Puck",    label: "Puck",    gender: "masculine" }

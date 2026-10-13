@@ -191,7 +191,8 @@ async def test_gemini_tts_provider(mock_gemini_client):
     ]
     mock_gemini_client.models.generate_content_stream = MagicMock(return_value=iter(stream_chunks))
 
-    provider = GeminiTTSProvider()
+    provider = GeminiTTSProvider(model_name="gemini-3.1-flash-tts-preview")
+    assert not provider.uses_interactions
 
     stream = provider.synthesize_stream("Hello Gemini Audio")
 

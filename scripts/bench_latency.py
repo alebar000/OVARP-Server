@@ -459,8 +459,7 @@ async def run(args) -> Path:
         "pairs": pairs, "modes": modes, "reps": args.reps, "gap_s": args.gap, "seed": args.seed,
         "mock": args.mock, "mock_zero": args.mock_zero, "mock_model": asdict(mm) if args.mock else None,
         "system_prompt": BENCH_SYSTEM_PROMPT, "prompts": prompts,
-        "gemini_llm_model": os.getenv("OVARP_GEMINI_LLM_MODEL", "gemini-flash-latest"),
-        "gemini_tts_model": os.getenv("OVARP_GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview"),
+        "openai_reasoning_effort": os.getenv("OVARP_OPENAI_REASONING_EFFORT", "none"),
         "notes": args.notes,
     }
     trials: list[Trial] = []

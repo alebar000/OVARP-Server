@@ -259,6 +259,7 @@ class CustomTTSProvider(BaseTTSProvider):
 
         except Exception as e:
             std_log.error(f"❌ Custom TTS '{self.name}': Synthesis failed | {type(e).__name__}: {e}")
+            raise  # reported to the console as a pipeline_error, not dropped
 
 
 async def test_custom_endpoint(base_url: str, api_key: str = "", model: str = "") -> dict:
