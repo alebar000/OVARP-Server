@@ -10,8 +10,21 @@ Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
+import os
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Dict, Any, Optional
+
+
+def tts_timeout_s(text: str) -> float:
+    """How long one synthesis request may take before it is abandoned and retried.
+
+    A vendor request occasionally hangs for a minute before failing; in a live
+    session that is a minute of silence. The bound grows with the text, so the
+    full-reply path (a whole answer in one request) is not cut short.
+    OVARP_TTS_TIMEOUT_S sets the base (default 15 s).
+    """
+    base = float(os.getenv("OVARP_TTS_TIMEOUT_S", "15"))
+    return base + 0.05 * len(text)
 
 class BaseSTTProvider(ABC):
     """

@@ -144,3 +144,36 @@ def test_console_is_told_the_model_each_provider_calls(monkeypatch):
     monkeypatch.setattr("src.api.routers.llm._agents_overriding_global", lambda: [])
     data = TestClient(main_module.app).get("/api/llm/config").json()
     assert data["llm_models"] == {"gemini": "gemini-3.5-flash-lite", "openai": "gpt-6-luna"}
+
+
+@pytest.mark.asyncio
+async def test_gemini_tts_hung_request_is_retried_once(gemini, monkeypatch):
+    import asyncio
+    monkeypatch.setenv("OVARP_TTS_TIMEOUT_S", "0.05")
+    audio = _wav(480)
+    calls = []
+
+    async def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            await asyncio.sleep(5)  # the vendor never answers this one
+        return SimpleNamespace(output_audio=SimpleNamespace(
+            data=base64.b64encode(audio).decode(), mime_type="audio/wav"))
+
+    gemini.aio.interactions.create = create
+    chunks = [c async for c in GeminiTTSProvider().synthesize_stream("Ok.")]
+    assert b"".join(chunks) == audio and len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_gemini_tts_gives_up_after_the_retry(gemini, monkeypatch):
+    import asyncio
+    monkeypatch.setenv("OVARP_TTS_TIMEOUT_S", "0.05")
+
+    async def create(**kwargs):
+        await asyncio.sleep(5)
+
+    gemini.aio.interactions.create = create
+    with pytest.raises(asyncio.TimeoutError):
+        async for _ in GeminiTTSProvider().synthesize_stream("Ok."):
+            pass

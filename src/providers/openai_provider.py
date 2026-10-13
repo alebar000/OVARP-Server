@@ -11,6 +11,7 @@ Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
+import asyncio
 import base64
 import os
 import json
@@ -22,7 +23,7 @@ from openai import AsyncOpenAI
 import logging
 from structlog import get_logger
 
-from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider
+from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider, tts_timeout_s
 from src.core.config import config_manager
 
 logger = get_logger()
@@ -455,8 +456,17 @@ class OpenAITTSProvider(BaseTTSProvider):
         voice = self._realtime_voice()
         for attempt in (1, 2):
             conn, reused = await self._acquire(voice)
+            timeout = tts_timeout_s(text)
             try:
-                pcm, transcript = await self._read_aloud(conn, text)
+                pcm, transcript = await asyncio.wait_for(self._read_aloud(conn, text), timeout)
+            except asyncio.TimeoutError:
+                await _close_quietly(conn)
+                # A response that hangs is abandoned and sent once more, on a fresh
+                # connection.
+                if attempt == 1:
+                    std_log.warning(f"⚠️ TTS: no audio after {timeout:.0f}s, retrying once")
+                    continue
+                raise
             except Exception:
                 await _close_quietly(conn)
                 # A pooled connection may have been closed by the server (session

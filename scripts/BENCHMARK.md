@@ -31,14 +31,16 @@ lower than `full`. This step tests only the script, not the providers.
 
 ```bash
 python scripts/bench_latency.py \
-  --pairs gemini:gemini,openai:gemini \
+  --pairs gemini:openai,openai:openai \
   --reps 5 --gap 3 --warmup 2 \
   --notes "machine=<model>, network=<wired/campus>, location=<city>, date=<yyyy-mm-dd>" \
   --out bench_results
 ```
 
-- `LLM:TTS`. Both pairs use Gemini's voice, so the comparison covers both LLM vendors
-  without depending on an OpenAI voice model that is due for retirement (see CLAUDE.md).
+- `LLM:TTS`. Both pairs use OpenAI's voice (`gpt-realtime-2.1-mini`), so the comparison
+  covers both LLM vendors with one voice. It read 12/12 test sentences verbatim and took about
+  1 s per sentence, against 2-3.5 s for `gemini-3.8-flash-lite-tts`, which also changed a
+  voseo form once (`check_tts_verbatim.py`, 2026-10-13).
 - Every pair runs both modes (`full`, `sentence`): all built-in LLM adapters stream.
   The `full` mode hides that capability, so it measures the path an adapter without
   streaming would take.

@@ -33,7 +33,7 @@ from google import genai
 from google.genai import types as genai_types
 from structlog import get_logger
 
-from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider
+from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider, tts_timeout_s
 from src.core.config import config_manager
 
 logger = get_logger()
@@ -475,6 +475,17 @@ class GeminiTTSProvider(BaseTTSProvider):
         raw = base64.b64decode(data) if isinstance(data, str) else bytes(data)
         return raw, audio.mime_type or "audio/wav"
 
+    async def _interactions_with_retry(self, text: str) -> tuple[bytes, Optional[str]]:
+        """One request, bounded by ``tts_timeout_s``; a request that hangs is
+        abandoned and sent once more."""
+        timeout = tts_timeout_s(text)
+        try:
+            return await asyncio.wait_for(self._synthesize_interactions(text), timeout)
+        except asyncio.TimeoutError:
+            std_log.warning(f"⚠️ Gemini TTS: no audio after {timeout:.0f}s, retrying once "
+                            f"| text=\"{text[:60]}\"")
+            return await asyncio.wait_for(self._synthesize_interactions(text), timeout)
+
     def _collect_stream(self, tts_prompt: str) -> tuple[bytes, Optional[str]]:
         """generate_content path (preview models). Runs in a worker thread: consumes
         the streaming response and returns the assembled audio bytes plus the mime
@@ -520,7 +531,7 @@ class GeminiTTSProvider(BaseTTSProvider):
         )
         try:
             if self.uses_interactions:
-                audio_bytes, mime_type = await self._synthesize_interactions(text)
+                audio_bytes, mime_type = await self._interactions_with_retry(text)
             else:
                 # The preview models sometimes answer in text unless the request is
                 # framed as speech.

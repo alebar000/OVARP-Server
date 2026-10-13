@@ -226,6 +226,9 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
   2027-02-26 (default is already `gpt-transcribe`).
 - TTS adapters raise on failure (no audio, API error); the orchestrator reports
   `pipeline_error`. A silent TTS failure reads as the agent mumbling.
+- Each Gemini (Interactions) and OpenAI (Realtime) synthesis is bounded by
+  `providers.base.tts_timeout_s(text)` (`OVARP_TTS_TIMEOUT_S`, default 15 s, plus 50 ms per
+  character) and retried once if it hangs: a Gemini request was seen to hang for 60 s.
 - Sentence-level path: every built-in LLM adapter offers `stream_reply` + `extract_actions`
   (the OpenAI-compatible ones share `stream_chat_text` / `classify_actions` in
   `openai_provider.py`); an adapter without them takes the full-reply path. Text is streamed
@@ -260,7 +263,7 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
 
 ## Known state (v1.0.0)
 
-Tests: 372 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
+Tests: 375 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
 and the modules added recently; the older files still carry ~400 violations (whitespace, line
 length, `Optional[X]`), not gated in CI. New code in an older file matches that file's existing
 style rather than importing a second convention into it.

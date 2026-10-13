@@ -155,3 +155,24 @@ async def test_a_failed_response_raises(realtime):
 async def test_legacy_voices_map_to_realtime_voices(realtime):
     await _speak(OpenAITTSProvider(voice="nova"), "Hi.")
     assert realtime.opened[0].sent[0][1]["audio"]["output"]["voice"] == "marin"
+
+
+@pytest.mark.asyncio
+async def test_a_hung_response_is_retried_on_a_fresh_connection(realtime, monkeypatch):
+    import asyncio
+    monkeypatch.setenv("OVARP_TTS_TIMEOUT_S", "0.05")
+    made = []
+
+    def make():
+        conn = FakeConnection()
+        if not made:
+            async def hang():
+                await asyncio.sleep(5)
+            conn.recv = hang
+        made.append(conn)
+        return conn
+
+    realtime.factory["make"] = make
+    audio = await _speak(OpenAITTSProvider(), "Ok.")
+    assert audio[44:] == b"\x01\x00" * 480
+    assert len(made) == 2 and made[0].closed
