@@ -23,6 +23,9 @@ data/sessions/
 data/evaluations/
 *.log
 
+# Benchmark runs (scripts/bench_latency.py --out); results for the paper are archived separately
+bench_results/
+
 # Local exports
 test_export.csv
 custom_providers.yaml
