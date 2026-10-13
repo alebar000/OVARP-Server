@@ -11,14 +11,13 @@ License: MIT
 """
 
 import asyncio
-import base64
 import logging
 import time
 from typing import Optional
 from structlog import get_logger
 
 from src.providers.base import BaseSTTProvider, BaseLLMProvider, BaseTTSProvider
-from src.core.schemas import BaseCommand
+from src.core.schemas import BaseCommand, encode_audio
 from src.core.router import router
 from src.core.telemetry import telemetry
 
@@ -101,19 +100,20 @@ class _TTSPipeline:
         task = asyncio.create_task(
             self._orchestrator._synthesize_sentence(sentence, self._target_agent, self._sem)
         )
-        self._queue.put_nowait(task)
+        self._queue.put_nowait((sentence, task))
 
     async def _consume(self) -> None:
         while True:
-            task = await self._queue.get()
-            if task is None:
+            item = await self._queue.get()
+            if item is None:
                 break
+            sentence, task = item
             chunks = await task
             if not chunks:
                 continue
             if self._first_chunk_ms is None:
                 self._first_chunk_ms = round((time.perf_counter() - self._start) * 1000)
-            await self._orchestrator._send_sentence_audio(chunks, self._target_agent)
+            await self._orchestrator._send_sentence_audio(chunks, self._target_agent, sentence)
             self._any_sent = True
             self._last_sent_ms = round((time.perf_counter() - self._start) * 1000)
 
@@ -720,12 +720,14 @@ class DialogOrchestrator:
                 )
             return chunks
 
-    async def _send_sentence_audio(self, chunks: list[bytes], target_agent: str) -> None:
+    async def _send_sentence_audio(self, chunks: list[bytes], target_agent: str,
+                                   text: str = "") -> None:
         """Streams pre-synthesized audio chunks for one sentence to clients, then signals
         completion for that sentence so playback can start without waiting for the rest
-        of the reply. See ``_TTSPipeline``."""
+        of the reply. See ``_TTSPipeline``. The sentence's audio is then saved to the
+        session record."""
         for audio_chunk in chunks:
-            b64_chunk = base64.b64encode(audio_chunk).decode("utf-8")
+            b64_chunk = encode_audio(audio_chunk)
             await router.route_command(BaseCommand(
                 sender="server_orchestrator",
                 target_device="all",  # Broadcast so WoZ console also receives audio
@@ -741,6 +743,7 @@ class DialogOrchestrator:
             command_type="audio",
             command="tts_complete"
         ))
+        telemetry.log_agent_audio(chunks, text, target_agent)
 
     async def _dispatch_tts(self, text: str, target_device: str, target_agent: str):
         """Starts TTS generation and streams audio chunks through the router as they arrive."""
@@ -755,9 +758,11 @@ class DialogOrchestrator:
             audio_generator = provider.synthesize_stream(text)
             
             chunk_count = 0
+            sent_chunks: list[bytes] = []
             async for audio_chunk in audio_generator:
+                sent_chunks.append(audio_chunk)
                 # We encode the raw bytes into base64 to transport inside the JSON command via ZMQ
-                b64_chunk = base64.b64encode(audio_chunk).decode("utf-8")
+                b64_chunk = encode_audio(audio_chunk)
                 chunk_count += 1
                 
                 cmd = BaseCommand(
@@ -781,6 +786,7 @@ class DialogOrchestrator:
                 command="tts_complete"
             )
             await router.route_command(end_cmd)
+            telemetry.log_agent_audio(sent_chunks, text, target_agent)
             std_log.info(f"✅ Orchestrator: TTS complete signal sent")
             
         except Exception as e:

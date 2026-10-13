@@ -10,10 +10,12 @@ License: MIT
 """
 
 import asyncio
+import atexit
 import json
 import logging
 import os
-from logging.handlers import RotatingFileHandler
+import queue
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 LOG_FORMAT = "%(asctime)s - [%(levelname)s] - %(name)s - %(message)s"
 MAX_LOG_BYTES = 5 * 1024 * 1024
@@ -21,6 +23,8 @@ LOG_BACKUP_COUNT = 5
 
 # Sockets currently subscribed to /ws/logs
 log_subscribers = []
+
+_listener = None
 
 
 class WebsocketLogHandler(logging.Handler):
@@ -56,11 +60,23 @@ def configure_logging():
     ws_handler = WebsocketLogHandler()
     ws_handler.setFormatter(formatter)
 
-    file_handler = RotatingFileHandler(
+    rotating = RotatingFileHandler(
         log_file_path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
     )
-    file_handler.setFormatter(formatter)
+    rotating.setFormatter(formatter)
+    rotating.setLevel(logging.DEBUG)
+
+    # The file is written by a listener thread: formatting timestamps, writing
+    # and checking for rollover stay off the event loop that streams audio.
+    global _listener
+    if _listener is not None:
+        _listener.stop()
+    log_queue: queue.SimpleQueue = queue.SimpleQueue()
+    file_handler = QueueHandler(log_queue)
     file_handler.setLevel(logging.DEBUG)
+    _listener = QueueListener(log_queue, rotating, respect_handler_level=True)
+    _listener.start()
+    atexit.register(_listener.stop)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)

@@ -146,6 +146,15 @@ logged before it is handled. The participant's raw audio is never stored: `log_i
 carry `marker_id`, the same id `marker_amended` / `marker_deleted` use, so a correction can be
 joined to what it corrects.
 
+Synthesized speech is not in the JSONL. Each utterance (a sentence, or a whole reply on the
+full-reply path) is saved as `session_<id>_audio/NNNNN.wav` and recorded as `event=agent_audio`
+with its text, size and duration; `tts_chunk` entries carry `audio_bytes` only.
+One background thread (`_RecordWriter`) owns the file: the event loop queues records and
+returns, the thread encodes and writes them in order. Call `telemetry.flush()` before reading
+the session file from code (the CSV export does). Records whose payload is a mutable object a
+caller may edit later (markers, amendments, surveys) are encoded at call time (`_log_now`).
+The server log file is written the same way, through a `QueueListener`.
+
 ## Security
 
 Both are opt-in via `.env`, and absent by default so a localhost run needs no setup:
@@ -193,6 +202,9 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
   change an API key at runtime; an eagerly bound client would keep authenticating with the old
   one. `OpenAIClientSingleton.reset_client()` / `GeminiClientSingleton.reset_client()` drop the
   cache, and `key_store.set_keys()` calls both. This regressed once already — see below.
+- Audio chunks are encoded with `schemas.encode_audio` (pybase64 when installed). It returns a
+  `Base64Text`, which `BaseCommand.to_json` splices into the JSON instead of re-scanning it;
+  `test_record_and_wire.py` pins that both paths produce identical output.
 - Model ids come from env vars with defaults: `OVARP_GEMINI_{LLM,STT,TTS}_MODEL` and
   `OVARP_OPENAI_{LLM,STT,TTS}_MODEL` (see `.env.example`).
 - Sentence-level path: gestures/emotion from `extract_actions` are dispatched the moment the
@@ -226,7 +238,7 @@ by `POST /api/keys/reveal`, which the console calls when a researcher presses **
 
 ## Known state (v1.0.0)
 
-Tests: 337 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
+Tests: 346 passing. `ruff check` is clean on `src/api/`, `src/main.py`, `src/core/key_store.py`
 and the modules added recently; the older files still carry ~400 violations (whitespace, line
 length, `Optional[X]`), not gated in CI. New code in an older file matches that file's existing
 style rather than importing a second convention into it.

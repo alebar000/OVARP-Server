@@ -25,6 +25,11 @@ from src.transport.base import BaseTransport
 logger = get_logger()
 std_log = logging.getLogger("OVARP.router")
 
+# Sent dozens of times per turn (one per text delta, one per 32 KB of audio).
+# Each is in the session record; a server-log line for each would only bury the
+# rest of the log. The orchestrator logs one summary line per reply and per utterance.
+_STREAMED_COMMANDS = frozenset({"llm_reply_chunk", "tts_chunk"})
+
 class CommandRouter:
     """
     Core bus that receives messages from any Transport Layer (ZMQ or WebSockets),
@@ -156,7 +161,8 @@ class CommandRouter:
     async def dispatch_outbound(self, command: BaseCommand):
         """Funnels a validated command down to all active transport layers using targeted messaging."""
         telemetry.log_interaction(command)
-        std_log.info(f"📡 Router: Dispatching | type={command.command_type} cmd={command.command} target={command.target_device} to {len(self._transports)} transports")
+        if command.command not in _STREAMED_COMMANDS:
+            std_log.info(f"📡 Router: Dispatching | type={command.command_type} cmd={command.command} target={command.target_device} to {len(self._transports)} transports")
         
         json_payload = command.to_json()
         

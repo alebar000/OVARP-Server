@@ -59,9 +59,13 @@ Zip the whole `bench_results/<run_id>/` folder:
 
 ## 5. Optional
 
-- `--mock-zero --reps 25` measures OVARP's own overhead with zero-latency providers.
-  The paper already reports one such run. Repeat it on the lab machine if you want
-  the number from that hardware.
+- `--mock-zero --reps 25 --gap 0` measures OVARP's own overhead: providers are
+  replaced by stubs that answer instantly, so every millisecond left is the
+  platform's (routing, validation, base64, serialization, the session record and
+  the server log). The stubs hand control back to the event loop between streamed
+  text chunks, as a network stream does. Takes about 30 s. Report the machine in
+  `--notes`; `env.json` records the CPU and whether the fast base64 encoder
+  (`pybase64`) was installed.
 - `--summarize bench_results/<run_id>` re-runs the analysis without new API calls.
 
 ## Metric definitions

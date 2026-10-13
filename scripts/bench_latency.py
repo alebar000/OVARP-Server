@@ -71,6 +71,7 @@ load_dotenv()
 
 from src.core.config import config_manager  # noqa: E402
 from src.core.router import router  # noqa: E402
+from src.core.logging_setup import configure_logging  # noqa: E402
 from src.core.orchestrator import DialogOrchestrator  # noqa: E402
 from src.providers.base import BaseLLMProvider, BaseTTSProvider, BaseSTTProvider  # noqa: E402
 from src.transport.base import BaseTransport  # noqa: E402
@@ -113,7 +114,7 @@ TARGET_AGENT = "agent_alpha"
 class CaptureTransport(BaseTransport):
     def __init__(self):
         super().__init__()
-        self.events: list[tuple[float, str, dict]] = []
+        self.raw: list[tuple[float, str]] = []
 
     async def start(self):
         pass
@@ -122,12 +123,20 @@ class CaptureTransport(BaseTransport):
         pass
 
     async def send(self, target_device: str, topic: str, message: str):
-        t = time.perf_counter()
-        try:
-            payload = json.loads(message)
-        except Exception:
-            payload = {}
-        self.events.append((t, payload.get("command", "?"), payload.get("subcommand") or {}))
+        # Stamp and store only: parsing here would put the harness's own JSON
+        # decoding (megabytes of base64 audio per long turn) inside the window it
+        # measures, delaying every message that follows. Parsed after the turn.
+        self.raw.append((time.perf_counter(), message))
+
+    def parsed(self) -> list[tuple[float, str, dict]]:
+        out = []
+        for t, message in self.raw:
+            try:
+                payload = json.loads(message)
+            except Exception:
+                payload = {}
+            out.append((t, payload.get("command", "?"), payload.get("subcommand") or {}))
+        return out
 
 
 class NoStreamLLM:
@@ -202,7 +211,13 @@ class MockLLM(BaseLLMProvider):
         await self._sleep(self.m.llm_first_token_ms)
         words = text.split(" ")
         for i, w in enumerate(words):
-            await self._sleep(1000 * (len(w) + 1) / 4 / self.m.llm_tokens_per_s)
+            if self.zero:
+                # A network stream hands control back to the event loop between
+                # chunks; a stub that never yields would serialize the whole reply
+                # in front of the first sentence's synthesis.
+                await asyncio.sleep(0)
+            else:
+                await self._sleep(1000 * (len(w) + 1) / 4 / self.m.llm_tokens_per_s)
             yield w + (" " if i < len(words) - 1 else "")
 
     async def extract_actions(self, spoken_text, system_prompt=None):
@@ -294,6 +309,14 @@ def _count_sentences(text: str) -> int:
     return len(ready) + (1 if rest.strip() else 0)
 
 
+def _has_fast_base64() -> bool:
+    try:
+        import pybase64  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def build_orchestrator(pair: tuple[str, str], mock: bool, zero: bool, mm: MockModel):
     llm_id, tts_id = pair
     if mock:
@@ -329,7 +352,7 @@ async def run_turn(orch: DialogOrchestrator, cap: CaptureTransport, tr: Trial, t
     orch.llm_providers[tr.llm] = NoStreamLLM(llm_obj) if tr.mode == "full" else llm_obj
     orch.clear_history()
     orch.clear_history(TARGET_AGENT)
-    cap.events.clear()
+    cap.raw.clear()
     tr.started_unix = time.time()
     t0 = time.perf_counter()
     try:
@@ -341,7 +364,7 @@ async def run_turn(orch: DialogOrchestrator, cap: CaptureTransport, tr: Trial, t
     utter_first = None
     utters: list[list] = []   # [arrival_ms_of_complete_audio, bytes, first_chunk_b64]
     cur_bytes = 0
-    for t, cmd, sub in cap.events:
+    for t, cmd, sub in cap.parsed():
         if cmd == "llm_reply_chunk" and tr.ttft_ms is None:
             tr.ttft_ms = ms(t)
         elif cmd == "llm_reply":
@@ -416,6 +439,7 @@ async def run_turn(orch: DialogOrchestrator, cap: CaptureTransport, tr: Trial, t
 async def run(args) -> Path:
     random.seed(args.seed)
     config_manager.load_config()
+    configure_logging()  # same handlers as the server, so their cost is measured too
     cap = CaptureTransport()
     router.add_transport(cap)
 
@@ -429,6 +453,8 @@ async def run(args) -> Path:
 
     env = {
         "run_id": run_id, "argv": sys.argv, "python": sys.version, "platform": platform.platform(),
+        "cpu": platform.processor() or platform.machine(), "cpu_count": os.cpu_count(),
+        "fast_base64": _has_fast_base64(),
         "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
         "pairs": pairs, "modes": modes, "reps": args.reps, "gap_s": args.gap, "seed": args.seed,
         "mock": args.mock, "mock_zero": args.mock_zero, "mock_model": asdict(mm) if args.mock else None,

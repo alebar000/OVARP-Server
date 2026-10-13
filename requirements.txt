@@ -12,3 +12,4 @@ google-genai>=1.0.0
 pytest>=8.2.1
 ruff>=0.4.7
 cryptography>=42.0.0
+pybase64>=1.4.0

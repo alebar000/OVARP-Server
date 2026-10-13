@@ -14,15 +14,124 @@ Author: Alexander Barquero Elizondo, Ph.D. — UCR, ECCI/CITIC
 License: MIT
 """
 
+import atexit
 import os
 import json
 import csv
+import queue
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 from pathlib import Path
+from typing import Optional
 
 from src.core.schemas import BaseCommand
+
+
+def _decoded_size(encoded: str) -> int:
+    """Byte length of a base64 payload, without decoding it."""
+    padding = 2 if encoded.endswith("==") else 1 if encoded.endswith("=") else 0
+    return len(encoded) * 3 // 4 - padding
+
+
+def _wav_duration_ms(head: bytes, total_bytes: int) -> Optional[int]:
+    """Duration of a PCM WAV from its 44-byte header and total size."""
+    if len(head) < 44 or head[:4] != b"RIFF":
+        return None
+    byte_rate = int.from_bytes(head[28:32], "little")
+    if not byte_rate:
+        return None
+    return round(1000 * (total_bytes - 44) / byte_rate)
+
+
+class _RecordWriter:
+    """Writes the session record on one background thread.
+
+    The event loop only hands over a record (a dict, an already-rendered line, or
+    an audio file) and returns; JSON encoding and every disk write happen here,
+    in submission order. The file is flushed whenever the queue runs empty, so
+    the disk trails the live session by milliseconds.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._queue: queue.SimpleQueue = queue.SimpleQueue()
+        self._thread = threading.Thread(target=self._run, name="ovarp-record", daemon=True)
+        self._thread.start()
+        atexit.register(self.flush)
+
+    # -- called from the event loop ---------------------------------------------
+    def info(self, **fields) -> None:
+        """Queue one record. Same call shape as a structlog logger."""
+        self._queue.put(("record", time.time(), fields))
+
+    def info_now(self, **fields) -> None:
+        """Encode now, write later: for records whose objects may change after
+        the call (marker metadata, questionnaire answers), so the line holds the
+        values as they were when the event happened."""
+        fields["timestamp"] = (
+            datetime.fromtimestamp(time.time(), tz=timezone.utc).isoformat().replace("+00:00", "Z")
+        )
+        self.put_line(json.dumps(fields, default=str))
+
+    def put_line(self, line: str) -> None:
+        self._queue.put(("line", line))
+
+    def put_file(self, path: Path, chunks: list[bytes]) -> None:
+        self._queue.put(("file", path, chunks))
+
+    def flush(self, timeout: float = 10.0) -> bool:
+        """Block until everything queued so far is on disk."""
+        if not self._thread.is_alive():
+            return False
+        done = threading.Event()
+        self._queue.put(("sync", done))
+        return done.wait(timeout)
+
+    # -- writer thread ------------------------------------------------------------
+    def _run(self) -> None:
+        with open(self.path, "a", encoding="utf-8") as out:
+            while True:
+                item = self._queue.get()
+                try:
+                    kind = item[0]
+                    if kind == "record":
+                        _, ts, fields = item
+                        fields["timestamp"] = (
+                            datetime.fromtimestamp(ts, tz=timezone.utc)
+                            .isoformat().replace("+00:00", "Z")
+                        )
+                        out.write(json.dumps(fields, default=str) + "\n")
+                    elif kind == "line":
+                        out.write(item[1] + "\n")
+                    elif kind == "file":
+                        _, path, chunks = item
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(path, "wb") as f:
+                            for chunk in chunks:
+                                f.write(chunk)
+                    elif kind == "sync":
+                        out.flush()
+                        item[1].set()
+                        continue
+                except Exception as e:  # one bad record must not stop the recorder
+                    out.write(json.dumps({"event": "record_write_error", "error": repr(e)}) + "\n")
+                if self._queue.empty():
+                    out.flush()
+
+
+class _LineSink:
+    """structlog logger that hands rendered lines to the record writer."""
+
+    def __init__(self, writer: _RecordWriter):
+        self._writer = writer
+
+    def msg(self, message: str) -> None:
+        self._writer.put_line(message)
+
+    log = debug = info = warn = warning = err = error = critical = exception = fatal = msg
+
 
 class TelemetryLogger:
     """
@@ -36,21 +145,31 @@ class TelemetryLogger:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.jsonl_path = self.log_dir / f"session_{self.session_id}.jsonl"
 
-        # Configure structlog to output to file
+        # One writer thread owns the session file. Telemetry events reach it as
+        # dicts (encoded on that thread); anything else logged through structlog
+        # is rendered as before and queued as a line, so both keep their order.
+        self._writer = _RecordWriter(self.jsonl_path)
         structlog.configure(
             processors=[
                 structlog.processors.TimeStamper(fmt="iso"),
                 structlog.processors.JSONRenderer()
             ],
-            logger_factory=structlog.WriteLoggerFactory(
-                file=open(self.jsonl_path, "a", encoding="utf-8")
-            )
+            logger_factory=lambda *args: _LineSink(self._writer),
         )
-        self.file_logger = structlog.get_logger()
+        self.file_logger = self._writer
+
+        # Synthesized speech is kept as WAV files beside the record, one per
+        # utterance, written by the same thread so files and entries stay in order.
+        self._audio_seq = 0
 
         # Keep a console logger separate so we don't spam JSON to the stdout
         self.console_logger = structlog.get_logger("console")
         self.console_logger.info("Telemetry Session Started", session_id=self.session_id, file=str(self.jsonl_path))
+
+    def _log_now(self, **fields) -> None:
+        """Record an event whose payload must be captured as it is at this moment."""
+        now = getattr(self.file_logger, "info_now", None)
+        (now or self.file_logger.info)(**fields)
 
     def _get_session_context(self) -> dict:
         """Returns session metadata to inject into every log entry, if a session is active."""
@@ -66,8 +185,17 @@ class TelemetryLogger:
         return {}
 
     def log_interaction(self, command: BaseCommand):
-        """Append a Command directly to the session logs with an atomic timestamp."""
+        """Append a Command directly to the session logs with an atomic timestamp.
+
+        Audio chunks are recorded by size. The audio itself is saved once per
+        utterance as a WAV file (``log_agent_audio``) rather than re-encoded into
+        the record as base64 with every chunk.
+        """
         ctx = self._get_session_context()
+        sub = command.subcommand
+        if sub and "audio_base64" in sub:
+            sub = dict(sub)
+            sub["audio_bytes"] = _decoded_size(sub.pop("audio_base64") or "")
         self.file_logger.info(
             event="interaction",
             host_timestamp=time.time(),
@@ -76,9 +204,43 @@ class TelemetryLogger:
             target_agent=command.target_agent,
             command_type=command.command_type,
             command=command.command,
-            subcommand=command.subcommand,
+            subcommand=sub,
             **ctx
         )
+
+    def log_agent_audio(self, chunks: list[bytes], text: str, target_agent: str) -> Optional[str]:
+        """Save one utterance of synthesized speech and record where it is.
+
+        ``chunks`` are the audio exactly as sent to clients (a WAV header followed
+        by PCM). The file is written in the background; the record entry, with
+        the file name, the spoken text and the duration, is queued now so it keeps
+        its place in the timeline. Returns the file's path relative to the
+        sessions directory.
+        """
+        total = sum(len(c) for c in chunks)
+        if not total:
+            return None
+        self._audio_seq += 1
+        rel = f"{self.jsonl_path.stem}_audio/{self._audio_seq:05d}.wav"
+        head = chunks[0] if len(chunks[0]) >= 44 else b"".join(chunks[:2])[:44]
+        self._writer.put_file(self.jsonl_path.parent / rel, list(chunks))
+        ctx = self._get_session_context()
+        self.file_logger.info(
+            event="agent_audio",
+            host_timestamp=time.time(),
+            target_agent=target_agent,
+            text=text,
+            audio_file=rel,
+            audio_bytes=total,
+            duration_ms=_wav_duration_ms(head, total),
+            **ctx
+        )
+        return rel
+
+    def flush(self, timeout: float = 10.0) -> bool:
+        """Block until every queued record and audio file is on disk."""
+        writer = getattr(self, "_writer", None)
+        return writer.flush(timeout) if writer is not None else True
 
     def log_inbound(self, command: BaseCommand):
         """Record a request a client sent to the server (speech, typed text, or
@@ -92,8 +254,7 @@ class TelemetryLogger:
         ctx = self._get_session_context()
         sub = dict(command.subcommand or {})
         if "audio_base64" in sub:
-            encoded = sub.pop("audio_base64") or ""
-            sub["audio_bytes"] = len(encoded) * 3 // 4
+            sub["audio_bytes"] = _decoded_size(sub.pop("audio_base64") or "")
         self.file_logger.info(
             event="inbound",
             host_timestamp=time.time(),
@@ -114,7 +275,7 @@ class TelemetryLogger:
         ``marker_amended`` / ``marker_deleted`` entries can be joined to this one.
         """
         ctx = self._get_session_context()
-        self.file_logger.info(
+        self._log_now(
             event="marker",
             host_timestamp=time.time(),
             marker_id=marker_id,
@@ -132,7 +293,7 @@ class TelemetryLogger:
         marker auditable rather than just changed.
         """
         ctx = self._get_session_context()
-        self.file_logger.info(
+        self._log_now(
             event="marker_amended",
             host_timestamp=time.time(),
             marker_id=marker_id,
@@ -144,7 +305,7 @@ class TelemetryLogger:
     def log_marker_deleted(self, marker_id: str, label: str):
         """Record that a marker was retracted, keeping the original entry intact."""
         ctx = self._get_session_context()
-        self.file_logger.info(
+        self._log_now(
             event="marker_deleted",
             host_timestamp=time.time(),
             marker_id=marker_id,
@@ -161,7 +322,7 @@ class TelemetryLogger:
         """
         ctx = self._get_session_context()
         ctx["participant_id"] = participant_id or ctx.get("participant_id", "")
-        self.file_logger.info(
+        self._log_now(
             event="survey_response",
             host_timestamp=time.time(),
             survey_id=survey_id,
@@ -184,7 +345,7 @@ class TelemetryLogger:
         """Log batched XR telemetry frames (head/hand/gaze tracking)."""
         ctx = self._get_session_context()
         for frame in frames:
-            self.file_logger.info(
+            self._log_now(
                 event="xr_telemetry",
                 host_timestamp=time.time(),
                 device_id=device_id,
@@ -195,7 +356,7 @@ class TelemetryLogger:
     def log_session_event(self, event_type: str, details: dict = None):
         """Log session lifecycle events (start, pause, resume, end)."""
         ctx = self._get_session_context()
-        self.file_logger.info(
+        self._log_now(
             event="session",
             host_timestamp=time.time(),
             session_event=event_type,
@@ -206,6 +367,7 @@ class TelemetryLogger:
     def export_to_csv(self) -> Path:
         """Parses the current session JSONL and flattens it to CSV for statistical analysis software like SPSS/R."""
         csv_path = self.log_dir / f"session_{self.session_id}.csv"
+        self.flush()
 
         try:
             with open(self.jsonl_path, 'r', encoding="utf-8") as f_in, \

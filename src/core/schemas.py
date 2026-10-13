@@ -12,9 +12,34 @@ License: MIT
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Dict, Optional, Literal
+import base64
 import json
 
 from src.core.config import config_manager
+
+try:  # SIMD base64, about 25x faster on 32 KB audio chunks; stdlib otherwise
+    from pybase64 import b64encode_as_string as _b64_text
+except ImportError:  # pragma: no cover - exercised only without the optional wheel
+    def _b64_text(data: bytes) -> str:
+        return base64.b64encode(data).decode("ascii")
+
+
+class Base64Text(str):
+    """Base64 produced by the server itself.
+
+    The base64 alphabet needs no escaping in JSON, so a command whose only
+    subcommand field is one of these can be serialized by splicing the string in
+    instead of having the JSON encoder scan tens of kilobytes per audio chunk.
+    Text that merely looks like base64 (e.g. from a client) is a plain ``str``
+    and takes the normal path.
+    """
+
+    __slots__ = ()
+
+
+def encode_audio(data: bytes) -> Base64Text:
+    """Encode an audio chunk for a ``tts_chunk`` command."""
+    return Base64Text(_b64_text(data))
 
 class BaseCommand(BaseModel):
     """
@@ -80,6 +105,13 @@ class BaseCommand(BaseModel):
         return self
 
     def to_json(self) -> str:
+        sub = self.subcommand
+        if sub is not None and len(sub) == 1:
+            audio = sub.get("audio_base64")
+            if type(audio) is Base64Text:
+                # Same bytes model_dump_json would produce (pinned by a test).
+                head = self.model_dump_json(exclude={"subcommand"})
+                return f'{head[:-1]},"subcommand":{{"audio_base64":"{audio}"}}}}'
         return self.model_dump_json()
 
     @classmethod
